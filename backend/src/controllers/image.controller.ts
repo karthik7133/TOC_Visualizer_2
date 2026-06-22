@@ -29,7 +29,7 @@ export async function scanImage(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Convert buffer → base64 for the Ollama vision API
+    // Convert buffer → base64 for the GPT-4o vision API
     const base64Image = req.file.buffer.toString('base64');
     console.log(`[Image] Received ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB)`);
 

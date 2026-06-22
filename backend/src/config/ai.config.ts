@@ -115,6 +115,18 @@ export class ClaudeClient {
     console.log(`[Claude] Using model "${this.model}"`);
   }
 
+  /** Internal helper used by extractCFGFromAI — avoids exposing private client. */
+  async generateWithSystem(system: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
+    const msg = await this.client.messages.create({
+      model: this.model,
+      max_tokens: maxTokens,
+      temperature,
+      system,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return (msg.content[0] as { text: string }).text.trim();
+  }
+
   /**
    * Step-1: Extract regex + alphabet from a natural language description.
    * Returns null if non-regular or extraction fails.
@@ -179,15 +191,7 @@ export async function extractCFGFromAI(
 ): Promise<string | null> {
   const attempt = async (temp: number): Promise<string | null> => {
     try {
-      const msg = await client['client'].messages.create({
-        model: client.model,
-        max_tokens: 512,
-        temperature: temp,
-        system: CFG_EXTRACT_PROMPT,
-        messages: [{ role: 'user', content: description }],
-      });
-
-      const raw = (msg.content[0] as { text: string }).text.trim();
+      const raw = await client.generateWithSystem(CFG_EXTRACT_PROMPT, description, 512, temp);
 
       if (raw.toUpperCase().startsWith('NOTCFL')) {
         throw new Error('This language is not context-free and cannot be represented by a PDA.');

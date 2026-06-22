@@ -2,7 +2,7 @@
  * ImageUploadPanel
  *
  * Drag-and-drop image uploader that sends the image to /api/scan-image
- * (minicpm-v4.6:1b via Ollama) and:
+ * (GPT-4o via OpenAI API) and:
  *   1. Immediately renders the extracted ε-NFA/NFA/DFA on the graph canvas.
  *   2. Shows "Remove ε" and "Convert to DFA" buttons when hasEpsilon is true.
  *   3. Provides a premium animated drag-and-drop UX with image preview.
@@ -294,7 +294,7 @@ export default function ImageUploadPanel({ onAutomatonGenerated }: Props) {
           disabled={isProcessing}
         >
           {loading ? (
-            <><span className="spinner" style={{ borderTopColor: '#fff' }} /> Scanning with qwen3-vl:2b…</>
+            <><span className="spinner" style={{ borderTopColor: '#fff' }} /> Scanning with GPT-4o…</>
           ) : (
             <>🔍 Scan Automaton</>
           )}
@@ -371,11 +371,11 @@ export default function ImageUploadPanel({ onAutomatonGenerated }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="spinner" style={{ borderTopColor: 'var(--accent)', flexShrink: 0 }} />
             <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
-              qwen3-vl:2b is reading the diagram…
+              GPT-4o is reading the diagram…
             </span>
           </div>
           <p style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            The vision model is identifying states, arrows, and labels. First query may take 30–60s while the model loads into VRAM.
+            GPT-4o Vision is identifying states, arrows, and labels. This usually takes 5–15 seconds.
           </p>
         </div>
       )}
@@ -386,7 +386,7 @@ export default function ImageUploadPanel({ onAutomatonGenerated }: Props) {
       {/* ── Vision model info ── */}
       <div className="vision-info">
         <div className="model-dot" />
-        <span>qwen3-vl:2b · local · Ollama · zero cloud cost</span>
+        <span>GPT-4o Vision · OpenAI API</span>
       </div>
     </div>
   );
