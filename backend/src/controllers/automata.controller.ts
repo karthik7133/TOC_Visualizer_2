@@ -165,9 +165,10 @@ export async function generateAutomaton(req: Request, res: Response): Promise<vo
 
     switch (inputType) {
       case 'regex': {
+        const hasNaturalLanguage = /strings|accepts|language|over|starts\b|ends\b|with/i.test(input);
         const wordCount = input.trim().split(/\s+/).length;
-        if (wordCount > 4) {
-          res.status(400).json({ error: 'Regex mode only accepts regular expressions, not natural language.' });
+        if (hasNaturalLanguage || (wordCount > 6 && !/[|*+()]/.test(input))) {
+          res.status(400).json({ error: 'Regex mode only accepts regular expressions. Please use the AI (Natural Language) mode for descriptions.' });
           return;
         }
         const nfaRaw = regexToNFA(input);
