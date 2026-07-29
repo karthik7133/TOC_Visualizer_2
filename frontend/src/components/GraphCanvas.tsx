@@ -447,9 +447,20 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
   const pulseRef     = useRef<HTMLDivElement | null>(null);
 
   // ─── Floating Toolbar States ───
-  const [layout, setLayout] = useState<'dagre' | 'cose' | 'circle' | 'grid'>('dagre');
-  const [isLocked, setIsLocked] = useState(false);
-  const [colorTheme, setColorTheme] = useState<'indigo' | 'violet' | 'teal' | 'orange'>('indigo');
+  const [layout, setLayout]       = useState<'dagre' | 'circle' | 'cose' | 'grid'>('dagre');
+  const [isLocked, setIsLocked]   = useState<boolean>(false);
+  const [colorTheme, setColorTheme] = useState<'indigo' | 'violet' | 'teal' | 'orange'>('violet');
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // Resize cytoscape on fullscreen toggle
+  useEffect(() => {
+    if (!cyRef.current) return;
+    const timer = setTimeout(() => {
+      cyRef.current?.resize();
+      cyRef.current?.fit(undefined, 48);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
 
   useEffect(() => { injectKeyframes(); }, []);
 
@@ -672,83 +683,89 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
 
   return (
     <div style={{
-      height:   '100%',
-      position: 'relative',
+      position: isFullscreen ? 'fixed' : 'relative',
+      top: isFullscreen ? 0 : 'auto',
+      left: isFullscreen ? 0 : 'auto',
+      right: isFullscreen ? 0 : 'auto',
+      bottom: isFullscreen ? 0 : 'auto',
+      width: isFullscreen ? '100vw' : '100%',
+      height: isFullscreen ? '100vh' : '100%',
+      zIndex: isFullscreen ? 99999 : 'auto',
       overflow: 'hidden',
-      background: 'var(--bg-base)',
+      background: '#070b15',
+      transition: 'all 250ms cubic-bezier(0.4,0,0.2,1)',
     }}>
       {/* ── Figma-style Dotted Grid background ── */}
       <div style={{
         position: 'absolute',
         inset: 0,
-        backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.22) 1.3px, transparent 1.3px)',
+        backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.18) 1.2px, transparent 1.2px)',
         backgroundSize: '24px 24px',
         pointerEvents: 'none',
         zIndex: 0,
       }} />
 
-      {/* ── Floating Canvas Toolbar (Second row, below zoom/legend) ── */}
+      {/* ── Floating Canvas Toolbar (Center row) ── */}
       {automaton && (
         <div style={{
           position: 'absolute',
-          top: 60,
+          top: 14,
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 20,
           display: 'flex',
           alignItems: 'center',
           gap: 12,
-          background: 'rgba(255, 255, 255, 0.92)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 12,
-          padding: '6px 14px',
+          background: 'rgba(15, 23, 42, 0.85)',
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          borderRadius: 14,
+          padding: '6px 16px',
           backdropFilter: 'blur(16px)',
-          boxShadow: 'var(--shadow-md)',
-          transition: 'all 200ms ease',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.08)',
           whiteSpace: 'nowrap',
         }}>
           {/* Layout selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Layout</span>
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Layout</span>
             <select
               value={layout}
               onChange={e => setLayout(e.target.value as any)}
               style={{
-                background: 'var(--bg-overlay)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 6,
+                background: 'rgba(30, 41, 59, 0.8)',
+                border: '1px solid rgba(148, 163, 184, 0.25)',
+                borderRadius: 7,
                 fontSize: 11,
-                padding: '3px 6px',
-                color: 'var(--text-primary)',
+                padding: '4px 8px',
+                color: '#f8fafc',
                 cursor: 'pointer',
                 outline: 'none',
                 fontWeight: 600,
               }}
             >
-              <option value="dagre">Flow (Dagre)</option>
-              <option value="cose">Force-Physics</option>
-              <option value="circle">Circle</option>
-              <option value="grid">Grid</option>
+              <option value="dagre" style={{ background: '#0f172a', color: '#f8fafc' }}>Flow (Dagre)</option>
+              <option value="cose" style={{ background: '#0f172a', color: '#f8fafc' }}>Force-Physics</option>
+              <option value="circle" style={{ background: '#0f172a', color: '#f8fafc' }}>Circle</option>
+              <option value="grid" style={{ background: '#0f172a', color: '#f8fafc' }}>Grid</option>
             </select>
           </div>
 
-          <div style={{ width: 1, height: 16, background: 'var(--border-subtle)' }} />
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
 
           {/* Lock Nodes Toggle */}
           <button
             onClick={() => setIsLocked(!isLocked)}
             style={{
-              background: isLocked ? 'rgba(79, 70, 229, 0.08)' : 'transparent',
-              border: 'none',
-              borderRadius: 6,
-              padding: '4px 8px',
+              background: isLocked ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+              border: isLocked ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid transparent',
+              borderRadius: 7,
+              padding: '4px 10px',
               fontSize: 11,
               fontWeight: 600,
-              color: isLocked ? 'var(--accent)' : 'var(--text-secondary)',
+              color: isLocked ? '#a5b4fc' : 'var(--text-secondary)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
+              gap: 5,
               transition: 'all 150ms ease',
             }}
             title={isLocked ? 'Nodes are locked in position' : 'Drag nodes to reposition them'}
@@ -756,10 +773,10 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
             <span>{isLocked ? '🔒 Locked' : '🔓 Drag'}</span>
           </button>
 
-          <div style={{ width: 1, height: 16, background: 'var(--border-subtle)' }} />
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
 
           {/* Dynamic Theme Color Presets */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Choose accent color preset">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Choose accent color preset">
             {([
               { id: 'indigo', color: '#4f46e5' },
               { id: 'violet', color: '#7c3aed' },
@@ -770,40 +787,40 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
                 key={t.id}
                 onClick={() => setColorTheme(t.id)}
                 style={{
-                  width: 14,
-                  height: 14,
+                  width: 15,
+                  height: 15,
                   borderRadius: '50%',
                   background: t.color,
-                  border: colorTheme === t.id ? '2px solid #ffffff' : '1px solid rgba(0,0,0,0.1)',
-                  boxShadow: colorTheme === t.id ? `0 0 0 2px ${t.color}` : 'none',
+                  border: colorTheme === t.id ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.2)',
+                  boxShadow: colorTheme === t.id ? `0 0 10px ${t.color}` : 'none',
                   cursor: 'pointer',
                   padding: 0,
-                  transition: 'all 150ms cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: colorTheme === t.id ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'all 150ms ease',
+                  transform: colorTheme === t.id ? 'scale(1.2)' : 'scale(1)',
                 }}
               />
             ))}
           </div>
 
-          <div style={{ width: 1, height: 16, background: 'var(--border-subtle)' }} />
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
 
           {/* PNG / JSON Export actions */}
-          <div style={{ display: 'flex', gap: 2 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
             <button
               onClick={handleExportPNG}
               style={{
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 6,
-                padding: '4px 8px',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 7,
+                padding: '4px 10px',
                 fontSize: 11,
                 fontWeight: 600,
-                color: 'var(--text-secondary)',
+                color: '#e2e8f0',
                 cursor: 'pointer',
-                transition: 'background 150ms',
+                transition: 'all 150ms ease',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-overlay)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.14)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
               title="Download diagram as PNG image"
             >
               📥 PNG
@@ -811,18 +828,18 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
             <button
               onClick={handleExportJSON}
               style={{
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 6,
-                padding: '4px 8px',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 7,
+                padding: '4px 10px',
                 fontSize: 11,
                 fontWeight: 600,
-                color: 'var(--text-secondary)',
+                color: '#e2e8f0',
                 cursor: 'pointer',
-                transition: 'background 150ms',
+                transition: 'all 150ms ease',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-overlay)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.14)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
               title="Download configuration schema as JSON"
             >
               ⚙️ JSON
@@ -831,19 +848,19 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
         </div>
       )}
 
-      {/* ── Top-left zoom controls ── */}
+      {/* ── Top-left zoom & Fullscreen controls ── */}
       <div style={{
         position: 'absolute',
-        top:      14,
-        left:     14,
-        zIndex:   20,
-        display:  'flex',
-        gap:      5,
+        top: 14,
+        left: 14,
+        zIndex: 30,
+        display: 'flex',
+        gap: 6,
         alignItems: 'center',
       }}>
         {[
-          { title: 'Zoom In',     icon: '+',  action: () => cyRef.current?.zoom({ level: cyRef.current.zoom() * 1.25, renderedPosition: { x: cyRef.current.width() / 2, y: cyRef.current.height() / 2 } }) },
-          { title: 'Zoom Out',    icon: '−',  action: () => cyRef.current?.zoom({ level: cyRef.current.zoom() / 1.25, renderedPosition: { x: cyRef.current.width() / 2, y: cyRef.current.height() / 2 } }) },
+          { title: 'Zoom In', icon: '+', action: () => cyRef.current?.zoom({ level: cyRef.current.zoom() * 1.25, renderedPosition: { x: cyRef.current.width() / 2, y: cyRef.current.height() / 2 } }) },
+          { title: 'Zoom Out', icon: '−', action: () => cyRef.current?.zoom({ level: cyRef.current.zoom() / 1.25, renderedPosition: { x: cyRef.current.width() / 2, y: cyRef.current.height() / 2 } }) },
           { title: 'Fit to view', icon: '⤢', action: () => cyRef.current?.fit(undefined, 48) },
         ].map(({ title, icon, action }) => (
           <button
@@ -851,64 +868,90 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
             title={title}
             onClick={action}
             style={{
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(255,255,255,0.9)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 7,
-              color: 'var(--text-secondary)',
-              fontSize: 14,
+              background: 'rgba(15, 23, 42, 0.85)',
+              border: '1px solid rgba(148, 163, 184, 0.2)',
+              borderRadius: 8,
+              color: '#f8fafc',
+              fontSize: 15,
+              fontWeight: 700,
               cursor: 'pointer',
-              backdropFilter: 'blur(8px)',
+              backdropFilter: 'blur(12px)',
               transition: 'all 150ms ease',
-              boxShadow: 'var(--shadow-sm)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
             }}
             onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.4)';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = activeColor;
               (e.currentTarget as HTMLButtonElement).style.color = activeColor;
             }}
             onMouseLeave={e => {
-              (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-subtle)';
-              (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(148, 163, 184, 0.2)';
+              (e.currentTarget as HTMLButtonElement).style.color = '#f8fafc';
             }}
           >
             {icon}
           </button>
         ))}
+
+        {/* Dedicated Fullscreen Toggle Button */}
+        <button
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          title={isFullscreen ? 'Exit Fullscreen Mode' : 'Expand Canvas to Fullscreen'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '0 12px',
+            height: 32,
+            background: isFullscreen ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'rgba(15, 23, 42, 0.85)',
+            border: `1px solid ${isFullscreen ? 'rgba(168, 85, 247, 0.5)' : 'rgba(148, 163, 184, 0.2)'}`,
+            borderRadius: 8,
+            color: '#ffffff',
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: 'pointer',
+            backdropFilter: 'blur(12px)',
+            transition: 'all 200ms ease',
+            boxShadow: isFullscreen ? '0 0 20px rgba(124, 58, 237, 0.4)' : '0 4px 12px rgba(0,0,0,0.4)',
+          }}
+        >
+          <span>{isFullscreen ? '✕ Exit Screen' : '⛶ Fullscreen'}</span>
+        </button>
       </div>
 
       {/* ── Top-right legend ── */}
       <div style={{
-        position:   'absolute',
-        top:        14,
-        right:      14,
-        zIndex:     20,
-        display:    'flex',
-        gap:        12,
+        position: 'absolute',
+        top: 14,
+        right: 14,
+        zIndex: 20,
+        display: 'flex',
+        gap: 14,
         alignItems: 'center',
-        background: 'rgba(255,255,255,0.9)',
-        border:     '1px solid var(--border-subtle)',
+        background: 'rgba(15, 23, 42, 0.85)',
+        border: '1px solid rgba(148, 163, 184, 0.2)',
         borderRadius: 10,
-        padding:    '6px 14px',
-        backdropFilter: 'blur(12px)',
+        padding: '6px 14px',
+        backdropFilter: 'blur(16px)',
         fontSize: 11,
-        boxShadow: 'var(--shadow-sm)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
       }}>
         {[
           { color: '#059669', label: 'Start / Accept' },
-          { color: activeColor, label: 'Active'       },
-          { color: '#e11d48', label: 'Reject'         },
+          { color: activeColor, label: 'Active' },
+          { color: '#e11d48', label: 'Reject' },
         ].map(item => (
           <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{
               width: 9, height: 9, borderRadius: '50%',
               background: item.color,
-              boxShadow: `0 0 6px ${item.color}80`,
+              boxShadow: `0 0 8px ${item.color}`,
             }} />
-            <span style={{ color: 'var(--text-secondary)', letterSpacing: '0.02em' }}>{item.label}</span>
+            <span style={{ color: '#cbd5e1', fontWeight: 600, letterSpacing: '0.02em' }}>{item.label}</span>
           </div>
         ))}
       </div>
@@ -919,39 +962,34 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
           key={`${hudState}-${hudSymbol}`}
           style={{
             position: 'absolute',
-            bottom: 18,
+            bottom: 20,
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 20,
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            background: 'rgba(255,255,255,0.95)',
+            gap: 12,
+            background: 'rgba(15, 23, 42, 0.9)',
             border: `1px solid ${
-              hudRejected ? '#fecdd3' :
-              hudAccepted ? '#a7f3d0' :
-              '#bfdbfe'
+              hudRejected ? 'rgba(244, 63, 94, 0.4)' :
+              hudAccepted ? 'rgba(16, 185, 129, 0.4)' :
+              'rgba(99, 102, 241, 0.4)'
             }`,
-            borderRadius: 12,
-            padding: '8px 18px',
-            backdropFilter: 'blur(16px)',
-            animation: 'hud-in 0.2s ease-out forwards',
-            boxShadow: hudRejected
-              ? '0 4px 18px rgba(225,29,72,0.08)'
-              : hudAccepted
-              ? '0 4px 18px rgba(5,150,105,0.08)'
-              : `0 4px 18px rgba(${colorTheme === 'teal' ? '13,148,136' : colorTheme === 'orange' ? '234,88,12' : colorTheme === 'violet' ? '124,58,237' : '79,70,229'}, 0.08)`,
+            borderRadius: 14,
+            padding: '10px 22px',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
             whiteSpace: 'nowrap',
           }}
         >
           {/* State pill */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>State</span>
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>State</span>
             <span style={{
-              fontFamily: 'Geist Mono, monospace',
-              fontSize: 14,
-              fontWeight: 700,
-              color: hudRejected ? '#e11d48' : hudAccepted ? '#059669' : activeColor,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 15,
+              fontWeight: 800,
+              color: hudRejected ? '#f43f5e' : hudAccepted ? '#10b981' : activeColor,
             }}>
               {hudState}
             </span>
@@ -959,19 +997,19 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
 
           {hudSymbol !== null && (
             <>
-              <div style={{ width: 1, height: 22, background: 'var(--border-subtle)' }} />
+              <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)' }} />
               {/* Symbol pill */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Read</span>
+                <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>Read</span>
                 <span style={{
-                  fontFamily: 'Geist Mono, monospace',
+                  fontFamily: 'var(--font-mono)',
                   fontSize: 14,
-                  fontWeight: 700,
-                  color: '#7c3aed',
-                  background: 'rgba(168,85,247,0.06)',
-                  border: '1px solid rgba(168,85,247,0.15)',
-                  borderRadius: 5,
-                  padding: '1px 8px',
+                  fontWeight: 800,
+                  color: '#c084fc',
+                  background: 'rgba(168,85,247,0.15)',
+                  border: '1px solid rgba(168,85,247,0.3)',
+                  borderRadius: 6,
+                  padding: '2px 10px',
                 }}>
                   {hudSymbol}
                 </span>
@@ -982,11 +1020,11 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
           {/* Verdict */}
           {(hudAccepted || hudRejected) && (
             <>
-              <div style={{ width: 1, height: 22, background: 'var(--border-subtle)' }} />
+              <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)' }} />
               <span style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: hudAccepted ? '#059669' : '#e11d48',
+                fontSize: 13,
+                fontWeight: 800,
+                color: hudAccepted ? '#10b981' : '#f43f5e',
                 letterSpacing: '-0.01em',
               }}>
                 {hudAccepted ? '✓ Accepted' : '✗ Rejected'}

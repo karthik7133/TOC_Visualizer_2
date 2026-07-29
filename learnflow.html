@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StateSpace — Learn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-1:#0b0f2e;
+  --bg-2:#1a1042;
+  --bg-3:#2d0b52;
+  --accent-cyan:#5ef2d6;
+  --accent-violet:#a78bfa;
+  --accent-pink:#f472b6;
+  --accent-amber:#fbbf24;
+  --glass-fill: rgba(255,255,255,0.06);
+  --glass-fill-strong: rgba(255,255,255,0.10);
+  --glass-border: rgba(255,255,255,0.16);
+  --text-hi:#f5f3ff;
+  --text-mid:#c9c3e8;
+  --text-low:#8d85b8;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{
+  height:100%;
+  font-family:'Sora',sans-serif;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(94,242,214,0.18), transparent 40%),
+    radial-gradient(circle at 85% 15%, rgba(167,139,250,0.22), transparent 45%),
+    radial-gradient(circle at 75% 80%, rgba(244,114,182,0.16), transparent 40%),
+    linear-gradient(160deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3) 100%);
+  color:var(--text-hi);
+  overflow-x:hidden;
+  min-height:100vh;
+}
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 42px 42px;
+  pointer-events:none;
+  z-index:0;
+  mask-image: radial-gradient(circle at 50% 30%, black 0%, transparent 75%);
+}
+.float-orb{
+  position:fixed; border-radius:50%; filter:blur(60px); z-index:0; pointer-events:none;
+  animation: drift 18s ease-in-out infinite;
+}
+.orb1{width:380px;height:380px; background:rgba(94,242,214,0.20); top:-100px; left:-100px;}
+.orb2{width:420px;height:420px; background:rgba(167,139,250,0.22); bottom:-140px; right:-120px; animation-delay:-6s;}
+.orb3{width:260px;height:260px; background:rgba(244,114,182,0.18); top:40%; right:10%; animation-delay:-12s;}
+@keyframes drift{
+  0%,100%{ transform:translate(0,0) scale(1); }
+  50%{ transform:translate(30px,-40px) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce){
+  .float-orb{animation:none;}
+  *{animation-duration:.001s !important; transition-duration:.001s !important;}
+}
+
+.screen{
+  position:relative; z-index:1;
+  min-height:100vh;
+  display:none;
+  flex-direction:column;
+  align-items:center;
+}
+.screen.active{display:flex;}
+
+/* ===== glass base ===== */
+.glass{
+  background:var(--glass-fill);
+  border:1px solid var(--glass-border);
+  border-radius:24px;
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.glass-strong{
+  background:var(--glass-fill-strong);
+  border:1px solid rgba(255,255,255,0.22);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+button{ font-family:inherit; cursor:pointer; }
+.eyebrow{
+  font-family:'JetBrains Mono', monospace;
+  font-size:12px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--accent-cyan); font-weight:500;
+}
+
+/* ============ ONBOARDING ============ */
+#onboarding{ justify-content:center; padding:24px; }
+.ob-wrap{ width:100%; max-width:520px; display:flex; flex-direction:column; align-items:center; gap:28px; }
+.ob-card{
+  width:100%; padding:48px 40px 36px;
+  display:flex; flex-direction:column; align-items:center; text-align:center; gap:18px;
+  position:relative; overflow:hidden;
+}
+.ob-card::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(135deg, rgba(94,242,214,0.10), transparent 60%);
+  pointer-events:none;
+}
+.ob-glyph{
+  width:84px;height:84px; border-radius:22px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:34px;
+  background:linear-gradient(135deg, rgba(94,242,214,0.25), rgba(167,139,250,0.25));
+  border:1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.ob-title{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:30px; line-height:1.25; }
+.ob-title span{ color:var(--accent-cyan); }
+.ob-desc{ color:var(--text-mid); font-size:15.5px; line-height:1.6; max-width:380px; }
+.dots{ display:flex; gap:8px; margin-top:6px; }
+.dot{ width:7px;height:7px; border-radius:50%; background:rgba(255,255,255,0.25); transition:.3s; }
+.dot.on{ width:22px; border-radius:5px; background:var(--accent-cyan); }
+.ob-actions{ display:flex; width:100%; gap:12px; }
+.btn{
+  border:none; border-radius:14px; padding:15px 22px; font-weight:600; font-size:15px;
+  transition: transform .15s ease, box-shadow .15s ease, background .2s;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.btn:active{ transform:scale(0.97); }
+.btn-primary{
+  flex:1;
+  color:#0b0f2e;
+  background:linear-gradient(135deg, var(--accent-cyan), #8af7e6);
+  box-shadow: 0 6px 20px rgba(94,242,214,0.35);
+}
+.btn-primary:hover{ box-shadow: 0 8px 26px rgba(94,242,214,0.5); }
+.btn-ghost{
+  background:var(--glass-fill); color:var(--text-mid); border:1px solid var(--glass-border);
+  padding:15px 18px;
+}
+.btn-ghost:hover{ color:var(--text-hi); background:var(--glass-fill-strong); }
+.skip-link{ color:var(--text-low); font-size:13px; background:none; border:none; text-decoration:underline; text-underline-offset:3px; }
+
+/* ============ SUBJECTS ============ */
+#subjects{ padding:64px 24px 60px; }
+.page-head{ width:100%; max-width:1080px; margin-bottom:42px; text-align:left; }
+.page-head h1{ font-family:'Space Grotesk',sans-serif; font-size:38px; font-weight:700; margin-top:10px; }
+.page-head p{ color:var(--text-mid); margin-top:10px; font-size:15.5px; max-width:520px; }
+
+.subject-grid{
+  width:100%; max-width:1080px;
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:22px;
+}
+@media (max-width:880px){ .subject-grid{ grid-template-columns:repeat(2,1fr);} }
+@media (max-width:560px){ .subject-grid{ grid-template-columns:1fr;} }
+
+.subj-card{
+  padding:28px 24px; cursor:pointer; position:relative; overflow:hidden;
+  display:flex; flex-direction:column; gap:14px; min-height:200px;
+  transition: transform .25s cubic-bezier(.2,.8,.2,1), border-color .25s, box-shadow .25s;
+}
+.subj-card:hover{
+  transform:translateY(-6px);
+  border-color:rgba(255,255,255,0.32);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.subj-card.locked{ cursor:not-allowed; opacity:.55; }
+.subj-card.locked:hover{ transform:none; }
+.subj-icon{
+  width:50px;height:50px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center; font-size:22px;
+  border:1px solid var(--glass-border);
+}
+.subj-card h3{ font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:600; }
+.subj-card .tag{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-low); letter-spacing:.05em; }
+.subj-card p.desc{ color:var(--text-mid); font-size:13.5px; line-height:1.5; flex:1; }
+.subj-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:auto; }
+.progress-track{ flex:1; height:6px; border-radius:6px; background:rgba(255,255,255,0.08); overflow:hidden; margin-right:12px; }
+.progress-fill{ height:100%; border-radius:6px; }
+.lock-badge{ font-size:11px; font-family:'JetBrains Mono',monospace; padding:4px 9px; border-radius:8px; background:rgba(255,255,255,0.08); color:var(--text-low); }
+
+.c-toc .subj-icon{ background:rgba(94,242,214,0.18); color:var(--accent-cyan); }
+.c-dsa .subj-icon{ background:rgba(167,139,250,0.18); color:var(--accent-violet); }
+.c-cn  .subj-icon{ background:rgba(244,114,182,0.18); color:var(--accent-pink); }
+.c-nlp .subj-icon{ background:rgba(251,191,36,0.18); color:var(--accent-amber); }
+.c-ml  .subj-icon{ background:rgba(94,242,214,0.18); color:var(--accent-cyan); }
+
+.fill-toc{ width:62%; background:linear-gradient(90deg,var(--accent-cyan),#8af7e6); }
+.fill-dsa{ width:30%; background:linear-gradient(90deg,var(--accent-violet),#c9b8ff); }
+.fill-cn{ width:10%; background:linear-gradient(90deg,var(--accent-pink),#ffb3d6); }
+
+.back-row{ width:100%; max-width:1080px; display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+.icon-btn{
+  width:38px;height:38px;border-radius:12px; border:1px solid var(--glass-border);
+  background:var(--glass-fill); color:var(--text-mid); display:flex; align-items:center; justify-content:center;
+  font-size:16px; transition:.2s;
+}
+.icon-btn:hover{ color:var(--text-hi); background:var(--glass-fill-strong); }
+
+/* ============ DASHBOARD ============ */
+#dashboard{ padding:32px 24px 70px; align-items:center; }
+.dash-wrap{ width:100%; max-width:1120px; }
+.dash-top{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:18px; margin-bottom:30px; }
+.dash-title h1{ font-family:'Space Grotesk',sans-serif; font-size:34px; font-weight:700; }
+.dash-title p{ color:var(--text-mid); margin-top:8px; font-size:14.5px; }
+.streak-chip{
+  display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:14px;
+}
+.streak-chip .n{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; color:var(--accent-amber); }
+.streak-chip .l{ font-size:12px; color:var(--text-low); }
+
+.stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-bottom:28px; }
+@media (max-width:880px){ .stat-row{ grid-template-columns:repeat(2,1fr);} }
+@media (max-width:520px){ .stat-row{ grid-template-columns:1fr;} }
+.stat-card{ padding:22px; display:flex; flex-direction:column; gap:6px; }
+.stat-card .top{ display:flex; justify-content:space-between; align-items:center; }
+.stat-card .ico{ width:36px;height:36px;border-radius:10px; display:flex;align-items:center;justify-content:center; font-size:16px; }
+.stat-card .val{ font-family:'Space Grotesk',sans-serif; font-size:28px; font-weight:700; }
+.stat-card .lbl{ font-size:12.5px; color:var(--text-low); }
+.stat-card .delta{ font-size:12px; font-weight:600; }
+.delta.up{ color:var(--accent-cyan); }
+.delta.down{ color:var(--accent-pink); }
+
+.dash-grid{ display:grid; grid-template-columns: 1.3fr 1fr; gap:20px; }
+@media (max-width:900px){ .dash-grid{ grid-template-columns:1fr; } }
+
+.panel{ padding:26px; margin-bottom:20px; }
+.panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+.panel-head h3{ font-family:'Space Grotesk',sans-serif; font-size:18px; font-weight:600; }
+.panel-head .eyebrow{ display:block; margin-bottom:4px; }
+.chip-link{ font-size:12.5px; color:var(--accent-cyan); background:none; border:none; }
+
+/* action tiles (quiz / visualizer) */
+.action-tiles{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width:480px){ .action-tiles{ grid-template-columns:1fr; } }
+.tile{
+  padding:22px; cursor:pointer; display:flex; flex-direction:column; gap:10px;
+  transition: transform .2s, box-shadow .2s; min-height:148px; position:relative; overflow:hidden;
+}
+.tile:hover{ transform:translateY(-4px); box-shadow:0 14px 32px rgba(0,0,0,0.4); }
+.tile .glow{ position:absolute; width:120px;height:120px; border-radius:50%; filter:blur(40px); opacity:.5; top:-30px; right:-30px; }
+.tile.quiz .glow{ background:var(--accent-violet); }
+.tile.viz .glow{ background:var(--accent-cyan); }
+.tile-ico{ width:42px;height:42px;border-radius:12px; display:flex;align-items:center;justify-content:center; font-size:19px; z-index:1;}
+.tile.quiz .tile-ico{ background:rgba(167,139,250,0.22); color:var(--accent-violet); }
+.tile.viz .tile-ico{ background:rgba(94,242,214,0.22); color:var(--accent-cyan); }
+.tile h4{ font-family:'Space Grotesk',sans-serif; font-size:16.5px; font-weight:600; z-index:1; }
+.tile p{ font-size:12.5px; color:var(--text-mid); z-index:1; }
+.tile .go{ margin-top:auto; font-size:12px; font-family:'JetBrains Mono',monospace; color:var(--text-low); z-index:1; }
+
+/* topic list */
+.topic-row{ display:flex; align-items:center; justify-content:space-between; padding:13px 0; border-bottom:1px solid rgba(255,255,255,0.08); }
+.topic-row:last-child{ border-bottom:none; }
+.topic-left{ display:flex; align-items:center; gap:12px; }
+.topic-dot{ width:9px;height:9px;border-radius:50%; }
+.topic-name{ font-size:14px; font-weight:500; }
+.topic-sub{ font-size:11.5px; color:var(--text-low); }
+.topic-score{ font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:600; }
+
+/* mini ring */
+.ring-wrap{ display:flex; align-items:center; gap:18px; }
+svg.ring{ transform:rotate(-90deg); }
+.ring-bg{ stroke:rgba(255,255,255,0.08); }
+.ring-fg{ stroke:var(--accent-cyan); stroke-linecap:round; transition: stroke-dashoffset 1s ease; }
+.ring-mid-num{ font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:700; }
+
+/* bar chart */
+.bars{ display:flex; align-items:flex-end; gap:10px; height:120px; margin-top:6px; }
+.bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end;}
+.bar{ width:100%; border-radius:8px 8px 4px 4px; background:linear-gradient(180deg, var(--accent-cyan), rgba(94,242,214,0.25)); transition: height 1s ease; }
+.bar-label{ font-size:10.5px; color:var(--text-low); font-family:'JetBrains Mono',monospace; }
+
+/* recent activity */
+.activity-item{ display:flex; gap:12px; align-items:flex-start; padding:11px 0; border-bottom:1px solid rgba(255,255,255,0.06); }
+.activity-item:last-child{ border-bottom:none; }
+.activity-dot{ width:30px;height:30px;border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px; margin-top:1px;}
+.activity-text{ font-size:13.5px; }
+.activity-time{ font-size:11.5px; color:var(--text-low); margin-top:2px; }
+
+/* badges */
+.badge-row{ display:flex; gap:10px; flex-wrap:wrap; }
+.badge{ padding:7px 12px; border-radius:10px; font-size:12px; font-family:'JetBrains Mono',monospace; display:flex; align-items:center; gap:6px;}
+
+.fade-in{ animation: fadeUp .5s ease both; }
+@keyframes fadeUp{ from{ opacity:0; transform:translateY(14px);} to{ opacity:1; transform:translateY(0);} }
+</style>
+</head>
+<body>
+
+<div class="float-orb orb1"></div>
+<div class="float-orb orb2"></div>
+<div class="float-orb orb3"></div>
+
+<!-- ================= SCREEN 1: ONBOARDING ================= -->
+<section class="screen active" id="onboarding">
+  <div class="ob-wrap">
+    <div class="glass-strong glass ob-card fade-in" id="obCard">
+      <!-- content injected by JS -->
+    </div>
+    <div class="dots" id="obDots"></div>
+    <button class="skip-link" id="skipBtn">Skip intro</button>
+  </div>
+</section>
+
+<!-- ================= SCREEN 2: SUBJECTS ================= -->
+<section class="screen" id="subjects">
+  <div class="page-head fade-in">
+    <span class="eyebrow">Choose a track</span>
+    <h1>What are we sharpening today?</h1>
+    <p>Pick a subject to open its quiz arena, automata visualizer, and your performance breakdown.</p>
+  </div>
+
+  <div class="subject-grid fade-in">
+    <div class="glass subj-card c-toc" onclick="openDashboard()">
+      <div class="subj-icon">⚙</div>
+      <div>
+        <span class="tag">FORMAL LANGUAGES</span>
+        <h3>Theory of Computation</h3>
+      </div>
+      <p class="desc">DFAs, NFAs, PDAs, CFGs &amp; Turing machines — quiz yourself and watch automata run.</p>
+      <div class="subj-foot">
+        <div class="progress-track"><div class="progress-fill fill-toc"></div></div>
+        <span style="font-size:12px;color:var(--text-low);font-family:'JetBrains Mono',monospace;">62%</span>
+      </div>
+    </div>
+
+    <div class="glass subj-card c-dsa locked">
+      <div class="subj-icon">🌳</div>
+      <div>
+        <span class="tag">CORE CS</span>
+        <h3>Data Structures &amp; Algo</h3>
+      </div>
+      <p class="desc">Stacks, recursion, graphs, dynamic programming and complexity drills.</p>
+      <div class="subj-foot">
+        <div class="progress-track"><div class="progress-fill fill-dsa"></div></div>
+        <span class="lock-badge">Soon</span>
+      </div>
+    </div>
+
+    <div class="glass subj-card c-cn locked">
+      <div class="subj-icon">📡</div>
+      <div>
+        <span class="tag">SYSTEMS</span>
+        <h3>Computer Networks</h3>
+      </div>
+      <p class="desc">OSI layers, routing, congestion control and protocol deep-dives.</p>
+      <div class="subj-foot">
+        <div class="progress-track"><div class="progress-fill fill-cn"></div></div>
+        <span class="lock-badge">Soon</span>
+      </div>
+    </div>
+
+    <div class="glass subj-card c-nlp locked">
+      <div class="subj-icon">💬</div>
+      <div>
+        <span class="tag">LANGUAGE AI</span>
+        <h3>NLP</h3>
+      </div>
+      <p class="desc">Tokenization, embeddings, transformers and sequence modeling.</p>
+      <div class="subj-foot">
+        <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+        <span class="lock-badge">Locked</span>
+      </div>
+    </div>
+
+    <div class="glass subj-card c-ml locked">
+      <div class="subj-icon">🧠</div>
+      <div>
+        <span class="tag">LEARNING SYSTEMS</span>
+        <h3>Machine Learning</h3>
+      </div>
+      <p class="desc">Loss landscapes, optimization, classic models and fine-tuning basics.</p>
+      <div class="subj-foot">
+        <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+        <span class="lock-badge">Locked</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SCREEN 3: TOC DASHBOARD ================= -->
+<section class="screen" id="dashboard">
+  <div class="dash-wrap">
+    <div class="back-row fade-in">
+      <button class="icon-btn" onclick="goTo('subjects')">←</button>
+      <span class="eyebrow">Theory of Computation</span>
+    </div>
+
+    <div class="dash-top fade-in">
+      <div class="dash-title">
+        <h1>Your TOC Dashboard</h1>
+        <p>Automaton drills, live visualizer, and where your score is actually coming from.</p>
+      </div>
+      <div class="glass streak-chip">
+        <span style="font-size:20px;">🔥</span>
+        <div>
+          <div class="n">6 days</div>
+          <div class="l">current streak</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- stat cards -->
+    <div class="stat-row">
+      <div class="glass stat-card fade-in">
+        <div class="top"><span class="lbl">Avg. Score</span><div class="ico" style="background:rgba(94,242,214,0.18); color:var(--accent-cyan);">🎯</div></div>
+        <div class="val">78<span style="font-size:16px;color:var(--text-low);">%</span></div>
+        <span class="delta up">▲ 6% vs last week</span>
+      </div>
+      <div class="glass stat-card fade-in">
+        <div class="top"><span class="lbl">Quizzes Done</span><div class="ico" style="background:rgba(167,139,250,0.18); color:var(--accent-violet);">📝</div></div>
+        <div class="val">24</div>
+        <span class="delta up">▲ 3 this week</span>
+      </div>
+      <div class="glass stat-card fade-in">
+        <div class="top"><span class="lbl">Weakest Topic</span><div class="ico" style="background:rgba(244,114,182,0.18); color:var(--accent-pink);">⚠</div></div>
+        <div class="val" style="font-size:19px;">PDAs</div>
+        <span class="delta down">▼ 52% accuracy</span>
+      </div>
+      <div class="glass stat-card fade-in">
+        <div class="top"><span class="lbl">Time Studied</span><div class="ico" style="background:rgba(251,191,36,0.18); color:var(--accent-amber);">⏱</div></div>
+        <div class="val">11.4<span style="font-size:16px;color:var(--text-low);">h</span></div>
+        <span class="delta up">▲ this month</span>
+      </div>
+    </div>
+
+    <!-- quiz / visualizer entry tiles -->
+    <div class="panel glass fade-in">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Jump in</span>
+          <h3>Practice &amp; Explore</h3>
+        </div>
+      </div>
+      <div class="action-tiles">
+        <div class="glass tile quiz" onclick="alert('Opening Quiz Section…')">
+          <div class="glow"></div>
+          <div class="tile-ico">🧩</div>
+          <h4>Quiz Section</h4>
+          <p>Timed MCQs on DFA, NFA, CFG &amp; PDA construction.</p>
+          <span class="go">START QUIZ →</span>
+        </div>
+        <div class="glass tile viz" onclick="alert('Opening Automata Visualizer…')">
+          <div class="glow"></div>
+          <div class="tile-ico">🔁</div>
+          <h4>Automata Visualizer</h4>
+          <p>Step through states &amp; transitions for any input string.</p>
+          <span class="go">LAUNCH VISUALIZER →</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <!-- left column -->
+      <div>
+        <div class="panel glass fade-in">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Breakdown</span>
+              <h3>Score by Topic</h3>
+            </div>
+            <button class="chip-link">View all</button>
+          </div>
+          <div id="topicList"></div>
+        </div>
+
+        <div class="panel glass fade-in">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Last 7 sessions</span>
+              <h3>Score Trend</h3>
+            </div>
+          </div>
+          <div class="bars" id="barChart"></div>
+        </div>
+      </div>
+
+      <!-- right column -->
+      <div>
+        <div class="panel glass fade-in" style="text-align:center;">
+          <div class="panel-head" style="justify-content:center;">
+            <div>
+              <span class="eyebrow">Overall mastery</span>
+              <h3>Mastery Ring</h3>
+            </div>
+          </div>
+          <div class="ring-wrap" style="justify-content:center;">
+            <svg class="ring" width="130" height="130" viewBox="0 0 130 130">
+              <circle class="ring-bg" cx="65" cy="65" r="54" stroke-width="12" fill="none"/>
+              <circle class="ring-fg" id="ringFg" cx="65" cy="65" r="54" stroke-width="12" fill="none"
+                stroke-dasharray="339.3" stroke-dashoffset="339.3"/>
+              <text x="65" y="70" text-anchor="middle" fill="white" font-family="Space Grotesk" font-size="26" font-weight="700" transform="rotate(90 65 65)">78%</text>
+            </svg>
+          </div>
+          <p style="color:var(--text-mid); font-size:12.5px; margin-top:10px;">You're ahead of 71% of learners on this track.</p>
+        </div>
+
+        <div class="panel glass fade-in">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Latest</span>
+              <h3>Recent Activity</h3>
+            </div>
+          </div>
+          <div id="activityList"></div>
+        </div>
+
+        <div class="panel glass fade-in">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Earned</span>
+              <h3>Badges</h3>
+            </div>
+          </div>
+          <div class="badge-row">
+            <div class="badge" style="background:rgba(94,242,214,0.15); color:var(--accent-cyan); border:1px solid rgba(94,242,214,0.3);">⚡ Fast Solver</div>
+            <div class="badge" style="background:rgba(167,139,250,0.15); color:var(--accent-violet); border:1px solid rgba(167,139,250,0.3);">🎯 90%+ Streak</div>
+            <div class="badge" style="background:rgba(251,191,36,0.15); color:var(--accent-amber); border:1px solid rgba(251,191,36,0.3);">🔥 6-Day Streak</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- Onboarding flow ---------- */
+const obSlides = [
+  {
+    glyph:"⚙",
+    title:'Welcome to <span>StateSpace</span>',
+    desc:"A focused practice ground for Theory of Computation — and soon, every core CS subject you're learning.",
+  },
+  {
+    glyph:"🧩",
+    title:'Quiz yourself, <span>topic by topic</span>',
+    desc:"DFA, NFA, CFG, PDA, Turing machines — short timed sets that tell you exactly where you're weak.",
+  },
+  {
+    glyph:"🔁",
+    title:'Watch automata <span>run, step by step</span>',
+    desc:"Feed in any string and trace the exact path through states and transitions, visually.",
+  },
+  {
+    glyph:"📈",
+    title:'See your growth, <span>not just your score</span>',
+    desc:"A dashboard built around where you actually lose marks — so practice gets sharper every week.",
+  },
+];
+let obIndex = 0;
+const obCard = document.getElementById('obCard');
+const obDots = document.getElementById('obDots');
+
+function renderOnboarding(){
+  const s = obSlides[obIndex];
+  const isLast = obIndex === obSlides.length - 1;
+  obCard.innerHTML = `
+    <div class="ob-glyph">${s.glyph}</div>
+    <h1 class="ob-title">${s.title}</h1>
+    <p class="ob-desc">${s.desc}</p>
+    <div class="ob-actions">
+      ${obIndex > 0 ? `<button class="btn btn-ghost" onclick="obPrev()">Back</button>` : ``}
+      <button class="btn btn-primary" onclick="obNext()">${isLast ? "Get started" : "Continue"}</button>
+    </div>
+  `;
+  obDots.innerHTML = obSlides.map((_,i)=> `<div class="dot ${i===obIndex?'on':''}"></div>`).join('');
+}
+function obNext(){
+  if(obIndex < obSlides.length-1){ obIndex++; renderOnboarding(); }
+  else { goTo('subjects'); }
+}
+function obPrev(){ if(obIndex>0){ obIndex--; renderOnboarding(); } }
+document.getElementById('skipBtn').addEventListener('click', ()=> goTo('subjects'));
+renderOnboarding();
+
+/* ---------- screen routing ---------- */
+function goTo(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo({top:0, behavior:'instant'});
+}
+function openDashboard(){
+  goTo('dashboard');
+  animateDashboard();
+}
+
+/* ---------- dashboard data render ---------- */
+const topics = [
+  {name:"DFA Construction", sub:"Deterministic automata", score:88, color:"var(--accent-cyan)"},
+  {name:"NFA → DFA Conversion", sub:"Subset construction", score:74, color:"var(--accent-violet)"},
+  {name:"Context-Free Grammars", sub:"Derivations & ambiguity", score:69, color:"var(--accent-pink)"},
+  {name:"Pushdown Automata", sub:"Stack-based recognition", score:52, color:"var(--accent-amber)"},
+  {name:"Turing Machines", sub:"Decidability basics", score:81, color:"var(--accent-cyan)"},
+];
+const topicList = document.getElementById('topicList');
+topicList.innerHTML = topics.map(t=>`
+  <div class="topic-row">
+    <div class="topic-left">
+      <div class="topic-dot" style="background:${t.color};"></div>
+      <div>
+        <div class="topic-name">${t.name}</div>
+        <div class="topic-sub">${t.sub}</div>
+      </div>
+    </div>
+    <div class="topic-score" style="color:${t.score<60?'var(--accent-pink)':'var(--text-hi)'}">${t.score}%</div>
+  </div>
+`).join('');
+
+const sessions = [62, 70, 65, 74, 80, 71, 78];
+const barChart = document.getElementById('barChart');
+barChart.innerHTML = sessions.map((v,i)=>`
+  <div class="bar-col">
+    <div class="bar" style="height:0%;" data-h="${v}"></div>
+    <div class="bar-label">D${i+1}</div>
+  </div>
+`).join('');
+
+const activities = [
+  {ico:"🧩", bg:"rgba(167,139,250,0.18)", color:"var(--accent-violet)", text:"Scored 9/10 on CFG Ambiguity quiz", time:"2 hours ago"},
+  {ico:"🔁", bg:"rgba(94,242,214,0.18)", color:"var(--accent-cyan)", text:"Traced NFA for string \"aabb\" in visualizer", time:"Yesterday"},
+  {ico:"⚠", bg:"rgba(244,114,182,0.18)", color:"var(--accent-pink)", text:"Missed 4/10 on Pushdown Automata set", time:"2 days ago"},
+  {ico:"🔥", bg:"rgba(251,191,36,0.18)", color:"var(--accent-amber)", text:"Hit a 6-day practice streak", time:"3 days ago"},
+];
+document.getElementById('activityList').innerHTML = activities.map(a=>`
+  <div class="activity-item">
+    <div class="activity-dot" style="background:${a.bg}; color:${a.color};">${a.ico}</div>
+    <div>
+      <div class="activity-text">${a.text}</div>
+      <div class="activity-time">${a.time}</div>
+    </div>
+  </div>
+`).join('');
+
+function animateDashboard(){
+  requestAnimationFrame(()=>{
+    document.querySelectorAll('.bar').forEach(b=>{
+      const h = b.getAttribute('data-h');
+      setTimeout(()=>{ b.style.height = h+'%'; }, 80);
+    });
+    const ring = document.getElementById('ringFg');
+    setTimeout(()=>{ ring.style.strokeDashoffset = 339.3 * (1 - 0.78); }, 150);
+  });
+}
+</script>
+</body>
+</html>

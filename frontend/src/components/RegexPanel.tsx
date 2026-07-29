@@ -135,8 +135,8 @@ export default function RegexPanel({ automaton, inputType, userPrompt, regexInpu
   if (!show || !visible) return null;
 
   const fa = automaton as DFASchema | NFASchema;
-  // Regex mode: show the actual user expression; NL mode: derive approximation
-  const regex      = isRegexMode ? regexInput.trim() : buildRegexDescription(fa);
+  // Use exact regex from automaton if attached, or fallback
+  const regex      = fa.regex ?? (isRegexMode ? regexInput.trim() : buildRegexDescription(fa));
   const typeLabel  = fa.type === AutomatonType.DFA ? 'DFA' : 'NFA';
   const panelTitle = isRegexMode ? 'Compiled Regular Expression' : 'Equivalent Regular Expression';
   const panelSub   = isRegexMode

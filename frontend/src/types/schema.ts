@@ -32,12 +32,14 @@ export type TMTransitions = Record<string, Record<string, TMTransitionEntry>>;
 
 export interface DFASchema {
   type: AutomatonType.DFA;
+  regex?: string;
   states: string[]; alphabet: string[];
   startState: string; acceptStates: string[];
   transitions: DFATransitions;
 }
 export interface NFASchema {
   type: AutomatonType.NFA;
+  regex?: string;
   states: string[]; alphabet: string[];
   startState: string; acceptStates: string[];
   transitions: NFATransitions;

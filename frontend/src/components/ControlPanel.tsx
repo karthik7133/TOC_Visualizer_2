@@ -255,7 +255,7 @@ export default function ControlPanel({ onAutomatonGenerated, onInputTypeChange, 
                     border: '1px solid rgba(168,85,247,0.3)',
                     color: '#c084fc',
                   }}>
-                    Qwen 2.5
+                    Groq 70B
                   </span>
                 )}
               </button>
@@ -371,7 +371,7 @@ export default function ControlPanel({ onAutomatonGenerated, onInputTypeChange, 
               </div>
             </div>
 
-            {/* RTX info */}
+            {/* Groq / Local engine info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{
                 width: 6, height: 6, borderRadius: '50%',
@@ -379,7 +379,7 @@ export default function ControlPanel({ onAutomatonGenerated, onInputTypeChange, 
                 boxShadow: '0 0 6px #10b981',
               }} />
               <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                RTX 3050 · 39% CPU / 61% GPU · ~2–4 min
+                Groq Llama 3.3 70B · Sub-Second Extraction
               </span>
             </div>
           </div>

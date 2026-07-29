@@ -72,6 +72,9 @@ export function useAutomatonRunner(): RunnerState {
       const { data } = await axios.post('/api/simulate', { automaton, inputString });
       setSteps(data.steps);
       setAccepted(data.accepted);
+      if (data.steps && data.steps.length > 1) {
+        setPlayState('playing');
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
