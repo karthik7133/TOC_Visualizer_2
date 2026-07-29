@@ -56,7 +56,7 @@ export default function TopicSelector({ onStart }: Props) {
     setLoading(true);
     try {
       const topics = Array.from(selected);
-      const res = await axios.post('http://localhost:3001/api/quiz/questions', { topics, count, merge });
+      const res = await axios.post('/api/quiz/questions', { topics, count, merge });
       onStart(topics, res.data.questions, merge, timer);
     } catch (e: any) {
       setError(e?.response?.data?.error ?? 'Failed to generate questions. Is the backend running?');
