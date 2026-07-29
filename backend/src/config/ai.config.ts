@@ -18,30 +18,47 @@ const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL ?? 'gpt-4o';
  * Smaller, focused task → much higher accuracy than asking for full JSON.
  * The backend compiles the regex with Thompson → Subset → Hopcroft.
  */
-export const REGEX_EXTRACT_PROMPT = `You are an automata theory expert.
-Your ONLY job: given a natural language description of a formal language, output a JSON object with TWO fields:
-  1. "regex": the correct regular expression for the language
-  2. "alphabet": an array of the alphabet symbols mentioned in the description (e.g., ["0","1"] for "over {0,1}")
+export const REGEX_EXTRACT_PROMPT = `You are a world-class automata theory expert specializing in formal language theory.
+Your ONLY job: given a natural language description of a regular language, reason through it carefully and output ONLY a JSON object.
 
-RULES:
-- Output ONLY a valid JSON object: {"regex": "...", "alphabet": ["...", "..."]}
-- No explanation, no markdown, no code fences, no extra text outside the JSON.
-- Regex operators ONLY: | (union), * (Kleene star), + (one or more), ? (zero or one), () for grouping.
-- Do NOT use \\w, \\d, ^, $, or any other regex metacharacters.
-- Alphabet symbols are literal characters (e.g., a, b, 0, 1).
-- Use "e" for epsilon (empty string) if needed.
-- If the alphabet is not mentioned, infer it from the symbols used in the regex.
+OUTPUT FORMAT:
+{"regex": "...", "alphabet": ["...", "..."], "error": "(optional, only if IMPOSSIBLE)"}
 
-EXAMPLES:
-  "strings over {a,b} containing ab as substring"  →  {"regex":"(a|b)*ab(a|b)*", "alphabet":["a","b"]}
-  "strings over {0,1} starting with 00"             →  {"regex":"00(0|1)*", "alphabet":["0","1"]}
-  "strings over {a,b} ending with bb"               →  {"regex":"(a|b)*bb", "alphabet":["a","b"]}
-  "strings over {0,1} with even number of 0s"       →  {"regex":"(1*(01*01*)*)", "alphabet":["0","1"]}
-  "binary strings ending in 00"                     →  {"regex":"(0|1)*00", "alphabet":["0","1"]}
-  "strings over {a,b} containing exactly two a's"   →  {"regex":"b*ab*ab*", "alphabet":["a","b"]}
-  "strings over {0,1} not containing 11"            →  {"regex":"(0|10)*(1|e)", "alphabet":["0","1"]}
-  "binary strings where 3rd symbol from right is 1" →  {"regex":"(0|1)*1(0|1)(0|1)", "alphabet":["0","1"]}
-  "strings divisible by 3"                          →  {"regex":"NONREGULAR", "alphabet":[]}
+STRICT RULES:
+1. Output ONLY valid JSON. No markdown, no code fences, no prose outside JSON.
+2. If the language is NOT regular (e.g., requires counting equality of two symbols, like a^n b^n), set "regex":"NONREGULAR".
+3. If the prompt requests a symbol not in the declared alphabet, set "regex":"IMPOSSIBLE" with "error" explanation.
+4. CRITICAL: Always include ALL alphabet symbols in wildcard Kleene loops. For alphabet {a,b,c} use (a|b|c)* — NEVER (a|b)*.
+5. Regex operators ONLY: | * + ? () — no \\w \\d ^ $ or any extended syntax.
+6. Use "e" for epsilon (empty string).
+
+REASONING GUIDE for compound conditions — think through each part separately, then concatenate:
+- "even number of X": X appears in pairs → (other*)(X other* X other*)*  or use (not-X)*(X (not-X)* X (not-X)*)*
+- "odd number of X": one X then pairs → (not-X)* X ((not-X)* X (not-X)* X)* (not-X)*
+- "starts with P": literal prefix P, then sigma*
+- "ends with S": sigma* then literal suffix S
+- "contains SUB": sigma* SUB sigma*
+- "A followed by B" (sequential): concat regex-for-A then regex-for-B, no interleaving
+- "A then B" where A is a parity condition on 0s and B is a parity condition on 1s:
+    treat the two symbol groups as INDEPENDENT segments: regex-for-A-over-{0} + regex-for-B-over-{1}
+
+EXAMPLES (study these carefully):
+  "strings over {0,1} with even number of 0s" → {"regex":"(1*(01*01*)*)","alphabet":["0","1"]}
+  "strings over {0,1} with odd number of 1s"  → {"regex":"0*(10*10*)*10*","alphabet":["0","1"]}
+  "strings over {0,1} with even number of 0s followed by odd number of 1s"
+    → Break it: even-0s-segment = (00)*, odd-1s-segment = 1(11)*
+    → {"regex":"(00)*1(11)*","alphabet":["0","1"]}
+  "strings over {0,1} with odd number of 0s followed by even number of 1s"
+    → odd-0s = 0(00)*, even-1s = (11)*
+    → {"regex":"0(00)*(11)*","alphabet":["0","1"]}
+  "strings over {a,b} starting with a and ending with b" → {"regex":"a(a|b)*b","alphabet":["a","b"]}
+  "strings over {0,1} starting with 00"                 → {"regex":"00(0|1)*","alphabet":["0","1"]}
+  "strings over {a,b} ending with bb"                   → {"regex":"(a|b)*bb","alphabet":["a","b"]}
+  "strings over {a,b,c} containing abc as substring"    → {"regex":"(a|b|c)*abc(a|b|c)*","alphabet":["a","b","c"]}
+  "strings over {a,b} containing exactly two a's"       → {"regex":"b*ab*ab*","alphabet":["a","b"]}
+  "strings over {0,1} not containing 11"                → {"regex":"(0|10)*(1|e)","alphabet":["0","1"]}
+  "strings over {a,b} with length divisible by 3"       → {"regex":"((a|b)(a|b)(a|b))*","alphabet":["a","b"]}
+  "strings over {0,1} ending with c"                    → {"regex":"IMPOSSIBLE","alphabet":["0","1"],"error":"Symbol c not in alphabet {0,1}"}
 
 Now give ONLY the JSON for:`;
 
@@ -103,21 +120,30 @@ Now output ONLY the CFG for:`;
 // ─── Claude Client (NL → Regex / CFG / Full JSON) ────────────────────────────
 
 export class ClaudeClient {
-  private readonly client: Anthropic;
+  private client: Anthropic | null = null;
   readonly model: string;
 
   constructor() {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Add it to your .env file.');
-    }
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     this.model = CLAUDE_MODEL;
-    console.log(`[Claude] Using model "${this.model}"`);
+    if (process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes('sk-ant-...')) {
+      this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      console.log(`[Claude] Using model "${this.model}"`);
+    }
+  }
+
+  private getClient(): Anthropic {
+    if (!this.client) {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new Error('ANTHROPIC_API_KEY is not set. Add it to your .env file.');
+      }
+      this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    }
+    return this.client;
   }
 
   /** Internal helper used by extractCFGFromAI — avoids exposing private client. */
   async generateWithSystem(system: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
-    const msg = await this.client.messages.create({
+    const msg = await this.getClient().messages.create({
       model: this.model,
       max_tokens: maxTokens,
       temperature,
@@ -133,7 +159,7 @@ export class ClaudeClient {
    */
   async extractRegex(description: string): Promise<{ regex: string; alphabet: string[] } | null> {
     try {
-      const msg = await this.client.messages.create({
+      const msg = await this.getClient().messages.create({
         model: this.model,
         max_tokens: 256,
         temperature: 0.05,
@@ -144,7 +170,11 @@ export class ClaudeClient {
       const text = (msg.content[0] as { text: string }).text.trim();
       // Strip markdown fences if Claude wraps the JSON
       const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      const parsed = JSON.parse(clean) as { regex?: string; alphabet?: string[] };
+      const parsed = JSON.parse(clean) as { regex?: string; alphabet?: string[]; error?: string };
+
+      if (parsed.regex === 'IMPOSSIBLE' || parsed.error) {
+        throw new Error(parsed.error || 'Invalid prompt: The requested language condition is impossible for the specified alphabet.');
+      }
 
       const regex = (parsed.regex ?? '').trim();
       if (!regex || regex.toUpperCase() === 'NONREGULAR' || regex.length > 300) return null;
@@ -165,7 +195,7 @@ export class ClaudeClient {
    * and as a last resort if regex extraction fails).
    */
   async generate(userPrompt: string): Promise<string> {
-    const msg = await this.client.messages.create({
+    const msg = await this.getClient().messages.create({
       model: this.model,
       max_tokens: 2048,
       temperature: 0.1,
@@ -179,6 +209,107 @@ export class ClaudeClient {
   }
 }
 
+// ─── Groq Client (Fast NL → Regex / CFG) ──────────────────────────────────────
+
+export class GroqClient {
+  private readonly client: OpenAI;
+  readonly model: string;
+
+  constructor() {
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error('GROQ_API_KEY is not set. Add it to your .env file.');
+    }
+    this.client = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+    });
+    this.model = process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile';
+    console.log(`[Groq] Using model "${this.model}"`);
+  }
+
+  async generateWithSystem(system: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+      temperature,
+      max_tokens: maxTokens,
+    });
+    return (response.choices[0]?.message?.content ?? '').trim();
+  }
+
+  async extractRegex(description: string): Promise<{ regex: string; alphabet: string[] } | null> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        max_tokens: 256,
+        temperature: 0.05,
+        messages: [
+          { role: 'system', content: REGEX_EXTRACT_PROMPT },
+          { role: 'user', content: description },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const text = (response.choices[0]?.message?.content ?? '').trim();
+      const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(clean) as { regex?: string; alphabet?: string[]; error?: string };
+
+      if (parsed.regex === 'IMPOSSIBLE' || parsed.error) {
+        throw new Error(parsed.error || 'Invalid prompt: The requested language condition is impossible for the specified alphabet.');
+      }
+
+      const regex = (parsed.regex ?? '').trim();
+      if (!regex || regex.toUpperCase() === 'NONREGULAR' || regex.length > 300) return null;
+
+      const alphabet: string[] = (parsed.alphabet && parsed.alphabet.length > 0)
+        ? parsed.alphabet.map(String).filter(s => s.length === 1)
+        : extractAlphabetFromDescription(description);
+
+      return { regex, alphabet };
+    } catch (err) {
+      console.warn('[Groq] extractRegex failed:', (err as Error).message);
+      return null;
+    }
+  }
+
+  async generate(userPrompt: string): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      max_tokens: 1024,
+      temperature: 0.1,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+    });
+
+    const text = (response.choices[0]?.message?.content ?? '').trim();
+    return text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  }
+}
+
+export type AIClientInterface = ClaudeClient | GroqClient;
+
+export function createAIClient(): AIClientInterface {
+  // Prefer Groq if key is set (any format)
+  if (process.env.GROQ_API_KEY) {
+    return new GroqClient();
+  }
+  // Fall back to Claude only if Anthropic key is explicitly configured
+  if (process.env.ANTHROPIC_API_KEY) {
+    return new ClaudeClient();
+  }
+  // No key configured — throw a clear startup error
+  throw new Error(
+    'No AI provider configured. Set GROQ_API_KEY (recommended) or ANTHROPIC_API_KEY in your environment.'
+  );
+}
+
+
 // ─── CFG Extraction (Claude) ──────────────────────────────────────────────────
 
 /**
@@ -186,7 +317,7 @@ export class ClaudeClient {
  * Returns null if non-CFL (throws) or empty response.
  */
 export async function extractCFGFromAI(
-  client: ClaudeClient,
+  client: AIClientInterface,
   description: string,
 ): Promise<string | null> {
   const attempt = async (temp: number): Promise<string | null> => {
