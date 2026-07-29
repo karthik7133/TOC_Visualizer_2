@@ -12,8 +12,12 @@ export interface ImageAutomatonJSON {
   final_states: string[];
 }
 
-// ─── Singleton Vision Client ──────────────────────────────────────────────────
-const visionClient = new OpenAIVisionClient();
+// ─── Lazy Vision Client ───────────────────────────────────────────────────────
+let _visionClient: OpenAIVisionClient | null = null;
+function getVisionClient(): OpenAIVisionClient {
+  if (!_visionClient) _visionClient = new OpenAIVisionClient();
+  return _visionClient;
+}
 
 // ─── Output Parser ────────────────────────────────────────────────────────────
 
@@ -102,7 +106,7 @@ export async function extractAutomatonFromImage(
 
   console.log(`[Vision] Sending image to GPT-4o (base64 length: ${cleanBase64.length})...`);
 
-  const rawText = await visionClient.extractFromImage(cleanBase64, resolvedMime);
+  const rawText = await getVisionClient().extractFromImage(cleanBase64, resolvedMime);
 
   const parsed = parseStructuredOutput(rawText);
 

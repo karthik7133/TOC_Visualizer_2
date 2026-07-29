@@ -347,16 +347,29 @@ export async function extractCFGFromAI(
 // ─── OpenAI Vision Client (Image → Automaton JSON) ───────────────────────────
 
 export class OpenAIVisionClient {
-  private readonly client: OpenAI;
+  private client?: OpenAI;
   readonly model: string;
 
   constructor() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not set. Add it to your .env file.');
-    }
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // Lazily initialized — client is created only when extractFromImage is actually called.
+    // This avoids throwing at module load time when OPENAI_API_KEY is not configured.
     this.model = OPENAI_VISION_MODEL;
-    console.log(`[OpenAI Vision] Using model "${this.model}"`);
+    if (process.env.OPENAI_API_KEY) {
+      this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      console.log(`[OpenAI Vision] Using model "${this.model}"`);
+    } else {
+      console.warn('[OpenAI Vision] OPENAI_API_KEY not set — Scan mode will be unavailable.');
+    }
+  }
+
+  private getClient(): OpenAI {
+    if (!this.client) {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY is not set. Scan mode requires an OpenAI API key.');
+      }
+      this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    }
+    return this.client;
   }
 
   /**
@@ -388,7 +401,7 @@ q2-a->q2
 
 Now analyze the diagram:`;
 
-    const response = await this.client.chat.completions.create({
+    const response = await this.getClient().chat.completions.create({
       model: this.model,
       max_tokens: 1024,
       temperature: 0,

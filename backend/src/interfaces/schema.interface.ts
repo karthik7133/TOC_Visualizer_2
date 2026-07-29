@@ -14,6 +14,7 @@ export type DFATransitions = Record<string, Record<string, string>>;
 
 export interface DFASchema {
   type: AutomatonType.DFA;
+  regex?: string;
   states: string[];
   alphabet: string[];
   startState: string;
@@ -28,6 +29,7 @@ export type NFATransitions = Record<string, Record<string, string[]>>;
 
 export interface NFASchema {
   type: AutomatonType.NFA;
+  regex?: string;
   states: string[];
   alphabet: string[];
   startState: string;

@@ -4,7 +4,7 @@ import {
   AutomatonType, DFASchema, NFASchema, PDASchema, TMSchema,
   SimulationStep, TapeSnapshot, AutomatonSchema,
 } from '../interfaces/schema.interface';
-import { ClaudeClient, extractAlphabetFromDescription, extractCFGFromAI } from '../config/ai.config';
+import { createAIClient, extractAlphabetFromDescription, extractCFGFromAI } from '../config/ai.config';
 import { regexToNFA }    from '../core/dfa-nfa/thompson';
 import { nfaToDFA }      from '../core/dfa-nfa/subset';
 import { minimizeDFA }   from '../core/dfa-nfa/hopcroft';
@@ -12,7 +12,10 @@ import { cfgToPDA }      from '../core/pda/cfg-parser';
 import { validateTM }    from '../core/tm/tm-validator';
 import { enforceDeadState, dfaToNFA } from '../core/dfa-nfa/complete';
 
-const ai = new ClaudeClient();
+const ai = createAIClient();
+
+// ─── (Local rules removed — all NL prompts go directly to Groq API) ──────────
+
 
 // ─── CFG Safety-Net ───────────────────────────────────────────────────────────
 
@@ -202,46 +205,30 @@ export async function generateAutomaton(req: Request, res: Response): Promise<vo
       }
       case 'natural-language': {
         if (machineType === AutomatonType.DFA || machineType === AutomatonType.NFA) {
+          // Always call Groq API to extract regex — no local rules
           const result = await ai.extractRegex(input);
-          console.log(`[Claude] Regex result: ${JSON.stringify(result)} for: "${input}"`);
+          console.log(`[Groq] Regex result: ${JSON.stringify(result)} for: "${input}"`);
 
-          if (result) {
-            let regex = result.regex.replace(/\bepsilon\b/gi, 'e').replace(/\bε\b/g, 'e');
-            try {
-              const nfaRaw = regexToNFA(regex);
-              if (result.alphabet.length > 0)
-                nfaRaw.alphabet = [...new Set([...nfaRaw.alphabet, ...result.alphabet])].sort();
-              const minDFA = minimizeDFA(nfaToDFA(nfaRaw));
-              if (machineType === AutomatonType.NFA) {
-                automaton = { ...dfaToNFA(minDFA), type: AutomatonType.NFA } as NFASchema;
-              } else {
-                automaton = enforceDeadState(minDFA);
-              }
-              console.log(`[Claude] Compiled from regex "${regex}" → ${minDFA.states.length} states.`);
-              break;
-            } catch (regexErr) {
-              console.warn(`[Claude] Regex compile failed (${(regexErr as Error).message}), falling back to full JSON.`);
-            }
+          if (!result) {
+            throw new Error('Groq could not derive a regex for this description. Try rephrasing your prompt.');
           }
 
-          console.log('[Claude] Regex extraction failed — requesting full JSON.');
-          const raw = await ai.generate(`Request: ${input}\nMachine type: ${machineType}\nIMPORTANT: include "regex" key.`);
-          const parsed = JSON.parse(raw);
-          const fallbackAlphabet: string[] = parsed.alphabet ?? extractAlphabetFromDescription(input);
-          if (parsed.regex) {
-            const nfaRaw = regexToNFA(parsed.regex);
-            if (fallbackAlphabet.length > 0)
-              nfaRaw.alphabet = [...new Set([...nfaRaw.alphabet, ...fallbackAlphabet])].sort();
+          let regex = result.regex.replace(/\bepsilon\b/gi, 'e').replace(/\bε\b/g, 'e');
+          try {
+            const nfaRaw = regexToNFA(regex);
+            if (result.alphabet.length > 0)
+              nfaRaw.alphabet = [...new Set([...nfaRaw.alphabet, ...result.alphabet])].sort();
             const minDFA = minimizeDFA(nfaToDFA(nfaRaw));
-            automaton = machineType === AutomatonType.NFA
-              ? { ...dfaToNFA(minDFA), type: AutomatonType.NFA } as NFASchema
-              : enforceDeadState(minDFA);
-          } else {
-            automaton = machineType === AutomatonType.DFA
-              ? enforceDeadState(parsed as DFASchema)
-              : (parsed as AutomatonSchema);
+            if (machineType === AutomatonType.NFA) {
+              automaton = { ...dfaToNFA(minDFA), type: AutomatonType.NFA, regex } as NFASchema;
+            } else {
+              automaton = { ...enforceDeadState(minDFA), regex };
+            }
+            console.log(`[Automata] Compiled from regex "${regex}" → ${minDFA.states.length} states.`);
+            break;
+          } catch (regexErr) {
+            throw new Error(`Regex "${regex}" from Groq could not be compiled: ${(regexErr as Error).message}`);
           }
-          break;
         }
 
         if (machineType === AutomatonType.PDA) {

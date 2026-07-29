@@ -2,6 +2,7 @@ import { Router }   from 'express';
 import multer        from 'multer';
 import { generateAutomaton, simulateAutomaton } from '../controllers/automata.controller';
 import { scanImage, convertAutomaton }          from '../controllers/image.controller';
+import { generateQuizQuestions }                from '../controllers/quiz.controller';
 
 const router = Router();
 
@@ -34,5 +35,8 @@ router.post('/scan-image', upload.single('image'), scanImage);
 
 /** Convert ε-NFA → NFA or DFA */
 router.post('/convert', convertAutomaton);
+
+/** Generate MCQ quiz questions via Claude for given TOC topics */
+router.post('/quiz/questions', generateQuizQuestions);
 
 export default router;
