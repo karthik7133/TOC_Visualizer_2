@@ -124,9 +124,11 @@ function buildElements(automaton: AutomatonSchema): ElementDefinition[] {
     const pda = automaton as PDASchema;
     const trans = pda.transitions;
     if (trans && typeof trans === 'object') {
-      // Group transitions by (src, inp, tgt) to avoid duplicate edge IDs in cytoscape.
-      // Multiple transitions with same key differ only in topOfStack/pushSymbols — merge their labels.
-      const grouped: Record<string, { src: string; inp: string; tgt: string; labels: string[] }> = {};
+      // Each individual transition rule (per topOfStack) gets its own visual edge
+      // with a short single-line label like "ε, S → aSb".
+      // This prevents the massive stacked label block when many ε-transitions collapse
+      // onto the same (src,inp,tgt) edge (common in grammar-simulation PDAs).
+      const edgeCounter: Record<string, number> = {};
 
       for (const [src, inputMap] of Object.entries(trans)) {
         if (!inputMap || typeof inputMap !== 'object') continue;
@@ -138,17 +140,21 @@ function buildElements(automaton: AutomatonSchema): ElementDefinition[] {
             const push = pushSymbols.length ? pushSymbols.join('') : 'ε';
             const tgt  = e.targetState ?? '';
             if (!tgt) continue;
-            const edgeKey = `${src}-${inp}-${tgt}`;
             const inpLabel = inp === 'ε' || inp === '' ? 'ε' : inp;
             const label = `${inpLabel}, ${e.topOfStack ?? '?'} → ${push}`;
-            if (!grouped[edgeKey]) grouped[edgeKey] = { src, inp, tgt, labels: [] };
-            grouped[edgeKey].labels.push(label);
+            const baseKey = `${src}-${inp}-${tgt}`;
+            edgeCounter[baseKey] = (edgeCounter[baseKey] ?? 0) + 1;
+            const edgeKey = `${baseKey}-${edgeCounter[baseKey]}`;
+            edges.push({
+              data: { id: edgeKey, source: src, target: tgt, label },
+              classes: src === tgt ? (() => {
+                const count = selfLoopCounts[src] ?? 0;
+                selfLoopCounts[src] = count + 1;
+                return `self-loop loop-${count}`;
+              })() : '',
+            });
           }
         }
-      }
-
-      for (const [edgeKey, { src, tgt, labels }] of Object.entries(grouped)) {
-        addEdge(edgeKey, src, tgt, labels.join('\n'));
       }
     }
 
@@ -315,67 +321,99 @@ function getCyStyle(theme: 'indigo' | 'violet' | 'teal' | 'orange') {
         'line-color':                '#94a3b8',
         'target-arrow-color':        '#94a3b8',
         'target-arrow-shape':        'triangle',
-        'arrow-scale':               1.25,
+        'arrow-scale':               1.2,
         'curve-style':               'bezier',
         'label':                     'data(label)',
         'font-family':               'Geist Mono, JetBrains Mono, monospace',
-        'font-size':                 11,
-        'font-weight':               700,
-        'color':                     '#1e293b',
-        'edge-text-rotation':        'autorotate',
-        'text-margin-y':             -10,
+        'font-size':                 12,
+        'font-weight':               600,
+        'color':                     '#0f172a',
+        'edge-text-rotation':        'none',      // ← labels always horizontal, never rotated
+        'text-margin-y':             -14,
+        'text-margin-x':             0,
         'text-background-color':     '#ffffff',
         'text-background-opacity':   1,
-        'text-background-padding':   '3px',
+        'text-background-padding':   '5px',
         'text-background-shape':     'roundrectangle',
-        'text-border-color':         '#cbd5e1',
+        'text-border-color':         '#94a3b8',
         'text-border-width':         1,
-        'text-border-opacity':       0.8,
+        'text-border-opacity':       1,
+        'text-max-width':            '160px',
+        'text-wrap':                 'wrap',
         'transition-property':       'line-color, width, color, target-arrow-color',
         'transition-duration':       '300ms',
         'transition-timing-function': 'ease-in-out',
       },
     },
-    // ── Fallback / Default for self-loops ──
+    // ── Self-loop styles — fanned out in 4 directions with horizontal labels ──
     {
       selector: 'edge.self-loop',
       style: {
-        'loop-direction': '-45deg',
-        'loop-sweep': '-35deg',
-        'text-margin-y': -14,
+        'loop-direction': '-60deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
       },
     },
-    // ── Specific self-loops fanned out by class ──
     {
       selector: 'edge.loop-0',
       style: {
-        'loop-direction': '-45deg',
-        'loop-sweep': '-35deg',
-        'text-margin-y': -14,
+        'loop-direction': '-60deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
       },
     },
     {
       selector: 'edge.loop-1',
       style: {
-        'loop-direction': '45deg',
-        'loop-sweep': '-35deg',
-        'text-margin-y': -14,
+        'loop-direction': '60deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
       },
     },
     {
       selector: 'edge.loop-2',
       style: {
-        'loop-direction': '-135deg',
-        'loop-sweep': '-35deg',
-        'text-margin-y': -14,
+        'loop-direction': '-120deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
       },
     },
     {
       selector: 'edge.loop-3',
       style: {
-        'loop-direction': '135deg',
-        'loop-sweep': '-35deg',
-        'text-margin-y': -14,
+        'loop-direction': '120deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
+      },
+    },
+    {
+      selector: 'edge.loop-4',
+      style: {
+        'loop-direction': '0deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
+      },
+    },
+    {
+      selector: 'edge.loop-5',
+      style: {
+        'loop-direction': '180deg',
+        'loop-sweep':     '-40deg',
+        'edge-text-rotation': 'none',
+        'text-margin-y': -16,
+        'text-margin-x': 0,
       },
     },
     // ── ACTIVE edge — dynamic theme glow ──
@@ -486,9 +524,9 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
 
     if (layout === 'dagre') {
       options.rankDir = 'LR';
-      options.nodeSep = 75;
-      options.rankSep = 130;
-      options.edgeSep = 15;
+      options.nodeSep = automaton?.type === 'PDA' ? 120 : 80;
+      options.rankSep = automaton?.type === 'PDA' ? 200 : 150;
+      options.edgeSep = automaton?.type === 'PDA' ? 30  : 15;
     } else if (layout === 'cose') {
       options.nodeOverlap = 20;
       options.nestingFactor = 1.2;
@@ -543,9 +581,9 @@ export default function GraphCanvas({ automaton, activeNodeId, activeEdgeId, cur
       layout: {
         name:    layout,
         rankDir: 'LR',
-        nodeSep: 75,
-        rankSep: 130,
-        edgeSep: 15,
+        nodeSep: automaton?.type === 'PDA' ? 120 : 80,
+        rankSep: automaton?.type === 'PDA' ? 200 : 150,
+        edgeSep: automaton?.type === 'PDA' ? 30  : 15,
         animate: false,
       } as unknown as cytoscape.LayoutOptions,
       userZoomingEnabled: true,
