@@ -84,32 +84,45 @@ TM schema:
 { "type":"TM", "states":["q0","q1","qAccept","qReject"], "alphabet":["0","1"], "tapeAlphabet":["0","1","B"], "startState":"q0", "acceptState":"qAccept", "rejectState":"qReject", "blankSymbol":"B", "transitions":{ "q0":{"0":{"targetState":"q0","writeSymbol":"0","direction":"R"}} } }`;
 
 /**
- * CFG PROMPT: ask Claude to extract a Context-Free Grammar for PDA generation.
+ * CFG PROMPT: ask AI to extract a Context-Free Grammar for PDA generation.
  */
 export const CFG_EXTRACT_PROMPT = `You are a formal language theory expert.
 Your ONLY job: given a natural language description of a context-free language, output the correct Context-Free Grammar (CFG) for it.
 
 RULES:
-- Output ONLY raw CFG production lines. No JSON, no markdown, no backticks, no explanation.
+- Output ONLY raw CFG production lines. NO JSON, NO markdown, NO backticks, NO prose, NO explanation.
 - Format: each line is   LHS -> RHS1 | RHS2 | ...
 - Use UPPERCASE for non-terminals: S, A, B, P, Q, T, C ...
 - Use lowercase letters or digits for terminals: a, b, 0, 1, (, ), ...
-- Use "e" for epsilon.
+- Use "e" for epsilon (empty string).
 - The FIRST line must define the start symbol S.
+- Every non-terminal you use on the right-hand side MUST also appear as a left-hand side somewhere.
 - ONLY output NOTCFL if the language is PROVABLY not context-free (e.g. {a^n b^n c^n}, {ww}).
 
-EXAMPLES:
+EXAMPLES (study ALL of these carefully before answering):
 "L = {a^n b^n | n >= 1}"               -> S -> aSb | ab
 "L = {a^n b^n | n >= 0}"               -> S -> aSb | e
 "L = {0^n 1^n | n >= 1}"               -> S -> 0S1 | 01
 "L = {a^n b^2n | n >= 1}"              -> S -> aSbb | abb
-"L = {a^i b^j | i != j}"              -> S -> P | Q
+"L = {a^2n b^n | n >= 1}"              -> S -> aaSb | aab
+"L = {a^n b^m | n != m, n,m >= 0}"    -> S -> P | Q
 P -> aPb | aP | a
 Q -> aQb | Qb | b
-"palindromes over {a,b}"              -> S -> aSa | bSb | a | b | e
-"L = {ww^R | w in {a,b}*}"           -> S -> aSa | bSb | e
-"balanced parentheses"                -> S -> SS | (S) | e
+"L = {a^i b^j | i > j, i,j >= 1}"     -> S -> aSb | aS | a
+"L = {a^i b^j | i < j, i,j >= 1}"     -> S -> aSb | Sb | b
+"L = {a^n b^m | n >= m, n,m >= 0}"    -> S -> aSb | aS | e
+"L = {a^n b^m | n <= m, n,m >= 0}"    -> S -> aSb | Sb | e
+"L = {a^n b^m c^n | n,m >= 0}"        -> S -> aSc | B | e
+B -> bB | e
+"L = {a^n b^(n+m) c^m | n,m >= 0}"    -> S -> aSc | B
+B -> bBc | e
+"L = {a^i b^j | i = 2j, i,j >= 0}"   -> S -> aaSb | e
+"palindromes over {a,b}"               -> S -> aSa | bSb | a | b | e
+"even-length palindromes over {a,b}"   -> S -> aSa | bSb | e
+"L = {ww^R | w in {a,b}*}"            -> S -> aSa | bSb | e
+"balanced parentheses"                 -> S -> SS | (S) | e
 "strings with equal a's and b's"      -> S -> aSbS | bSaS | e
+"strings over {a,b,c} where #a = #b"  -> S -> aSbS | bSaS | cS | Sc | e
 
 NOT context-free (output NOTCFL for these only):
 - {a^n b^n c^n | n >= 1}
@@ -310,25 +323,54 @@ export function createAIClient(): AIClientInterface {
 }
 
 
-// ─── CFG Extraction (Claude) ──────────────────────────────────────────────────
+// ─── CFG Extraction (Groq / Claude) ──────────────────────────────────────────
 
 /**
- * Ask Claude for the CFG of a context-free language.
+ * Validate that every non-terminal used on any RHS is defined as an LHS.
+ * Returns an array of undefined non-terminal names (empty = valid).
+ */
+function validateCFG(cfgText: string): string[] {
+  const ARROW_RE = /->|→/;
+  const lines = cfgText.split('\n').map(l => l.trim()).filter(l => ARROW_RE.test(l));
+
+  const defined = new Set<string>();
+  const usedNTs = new Set<string>();
+
+  for (const line of lines) {
+    const parts = line.split(ARROW_RE);
+    const lhs = (parts[0] ?? '').trim();
+    const rhs = parts.slice(1).join('->');  // rejoin in case rhs itself had an arrow
+    if (/^[A-Z][A-Z']*$/.test(lhs)) defined.add(lhs);
+
+    // Find all uppercase tokens (non-terminals) on the RHS
+    for (const alt of rhs.split('|')) {
+      const tokens = [...alt.matchAll(/[A-Z][A-Z']*/g)];
+      for (const m of tokens) usedNTs.add(m[0]);
+    }
+  }
+
+  // Report NT's used on RHS but never defined as LHS
+  return [...usedNTs].filter(nt => !defined.has(nt));
+}
+
+/**
+ * Ask Groq (or Claude fallback) for the CFG of a context-free language.
+ * Includes validation + one self-correction retry.
  * Returns null if non-CFL (throws) or empty response.
  */
 export async function extractCFGFromAI(
   client: AIClientInterface,
   description: string,
 ): Promise<string | null> {
-  const attempt = async (temp: number): Promise<string | null> => {
+  const attemptRaw = async (prompt: string, temp: number): Promise<string | null> => {
     try {
-      const raw = await client.generateWithSystem(CFG_EXTRACT_PROMPT, description, 512, temp);
+      const raw = await client.generateWithSystem(CFG_EXTRACT_PROMPT, prompt, 512, temp);
 
       if (raw.toUpperCase().startsWith('NOTCFL')) {
         throw new Error('This language is not context-free and cannot be represented by a PDA.');
       }
       if (!raw || !raw.includes('->')) return null;
-      if (raw.length > 1000) return null;   // hallucinated prose
+      if (raw.length > 1200) return null;   // hallucinated prose
       return raw;
     } catch (err) {
       const msg = (err as Error).message;
@@ -337,12 +379,35 @@ export async function extractCFGFromAI(
     }
   };
 
-  const first = await attempt(0.05);
-  if (first) return first;
+  // Attempt 1: direct description, low temperature
+  let cfg = await attemptRaw(description, 0.05);
+  if (!cfg) {
+    console.log('[CFG] First attempt empty, retrying with temp 0.15...');
+    cfg = await attemptRaw(description, 0.15);
+  }
+  if (!cfg) return null;
 
-  console.log('[CFG] First attempt empty, retrying with temp 0.15...');
-  return attempt(0.15);
+  // Validate: check all RHS non-terminals are defined
+  const undefined_nts = validateCFG(cfg);
+  if (undefined_nts.length > 0) {
+    console.warn(`[CFG] Validation failed — undefined non-terminals: [${undefined_nts.join(', ')}]. Retrying with correction prompt...`);
+    const correctionPrompt =
+      `${description}\n\n` +
+      `Your previous answer used these non-terminals on the right-hand side but never defined them as left-hand sides: ${undefined_nts.join(', ')}.\n` +
+      `Please output a CORRECTED CFG where EVERY non-terminal used on the right-hand side also appears as a left-hand side. Output ONLY the production lines.`;
+    const corrected = await attemptRaw(correctionPrompt, 0.3);
+    if (corrected) {
+      const stillBad = validateCFG(corrected);
+      if (stillBad.length > 0) {
+        console.warn(`[CFG] Corrected CFG still has undefined NTs: [${stillBad.join(', ')}]. Using anyway.`);
+      }
+      return corrected;
+    }
+  }
+
+  return cfg;
 }
+
 
 // ─── OpenAI Vision Client (Image → Automaton JSON) ───────────────────────────
 

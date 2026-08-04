@@ -9,6 +9,7 @@ import { regexToNFA }    from '../core/dfa-nfa/thompson';
 import { nfaToDFA }      from '../core/dfa-nfa/subset';
 import { minimizeDFA }   from '../core/dfa-nfa/hopcroft';
 import { cfgToPDA }      from '../core/pda/cfg-parser';
+import { matchNLtoPDA }  from '../core/pda/nl-pda-matcher';
 import { validateTM }    from '../core/tm/tm-validator';
 import { enforceDeadState, dfaToNFA } from '../core/dfa-nfa/complete';
 
@@ -233,23 +234,38 @@ export async function generateAutomaton(req: Request, res: Response): Promise<vo
         }
 
         if (machineType === AutomatonType.PDA) {
+          // ── Step 1: Try the provably-correct NL→PDA hardcoded matcher ──────────
+          // Handles: a^nb^n, palindromes, equal counts, balanced brackets,
+          //          ww^R, centre-marked, 3-symbol patterns, multiplier forms, etc.
+          const directPDA = matchNLtoPDA(input);
+          if (directPDA) {
+            console.log(`[NL→PDA] Matched pattern directly — skipping AI CFG.`);
+            automaton = directPDA;
+            break;
+          }
+
+          // ── Step 2: Try the regex-based CFG safety-net ───────────────────────
           const safetyNet = deriveKnownCFG(input);
           if (safetyNet) {
             console.log(`[Safety-net] Using known CFG for: "${input.slice(0, 60)}"`);
             automaton = cfgToPDA(safetyNet);
             break;
           }
+
+          // ── Step 3: Ask Groq for the CFG, then convert to PDA ───────────────
           let cfg: string | null = null;
           try {
             cfg = await extractCFGFromAI(ai, input);
           } catch (err) {
             throw new Error(`The AI determined this language is not context-free. Try rephrasing.`);
           }
-          console.log(`[Claude PDA] Extracted CFG:\n${cfg}`);
+          console.log(`[Groq PDA] Extracted CFG:\n${cfg}`);
           if (cfg) {
             automaton = cfgToPDA(cfg);
             break;
           }
+
+          // ── Step 4: Last-resort — ask Groq for a full PDA JSON ──────────────
           const raw = await ai.generate(`Generate a valid PDA JSON for: ${input}\nMachine type: PDA.`);
           automaton = JSON.parse(raw) as AutomatonSchema;
           break;
