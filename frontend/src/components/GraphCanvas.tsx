@@ -124,11 +124,32 @@ function buildElements(automaton: AutomatonSchema): ElementDefinition[] {
     const pda = automaton as PDASchema;
     const trans = pda.transitions;
     if (trans && typeof trans === 'object') {
-      // Each individual transition rule (per topOfStack) gets its own visual edge
-      // with a short single-line label like "ε, S → aSb".
-      // This prevents the massive stacked label block when many ε-transitions collapse
-      // onto the same (src,inp,tgt) edge (common in grammar-simulation PDAs).
-      const edgeCounter: Record<string, number> = {};
+      // ── Pass 1: count self-loops per state and parallel edges per (src,tgt) pair ──
+      const selfLoopTotal:    Record<string, number> = {};
+      const parallelTotal:    Record<string, number> = {};
+
+      for (const [src, inputMap] of Object.entries(trans)) {
+        if (!inputMap || typeof inputMap !== 'object') continue;
+        for (const [, entryList] of Object.entries(inputMap)) {
+          if (!Array.isArray(entryList)) continue;
+          for (const e of entryList) {
+            if (!e || typeof e !== 'object') continue;
+            const tgt = e.targetState ?? '';
+            if (!tgt) continue;
+            if (src === tgt) {
+              selfLoopTotal[src] = (selfLoopTotal[src] ?? 0) + 1;
+            } else {
+              const k = `${src}→${tgt}`;
+              parallelTotal[k] = (parallelTotal[k] ?? 0) + 1;
+            }
+          }
+        }
+      }
+
+      // ── Pass 2: generate edges with computed inline styles ──
+      const selfLoopIdx:   Record<string, number> = {};
+      const parallelIdx:   Record<string, number> = {};
+      const edgeCounter:   Record<string, number> = {};
 
       for (const [src, inputMap] of Object.entries(trans)) {
         if (!inputMap || typeof inputMap !== 'object') continue;
@@ -141,18 +162,63 @@ function buildElements(automaton: AutomatonSchema): ElementDefinition[] {
             const tgt  = e.targetState ?? '';
             if (!tgt) continue;
             const inpLabel = inp === 'ε' || inp === '' ? 'ε' : inp;
-            const label = `${inpLabel}, ${e.topOfStack ?? '?'} → ${push}`;
+            const label    = `${inpLabel}, ${e.topOfStack ?? '?'} → ${push}`;
+
             const baseKey = `${src}-${inp}-${tgt}`;
             edgeCounter[baseKey] = (edgeCounter[baseKey] ?? 0) + 1;
             const edgeKey = `${baseKey}-${edgeCounter[baseKey]}`;
-            edges.push({
-              data: { id: edgeKey, source: src, target: tgt, label },
-              classes: src === tgt ? (() => {
-                const count = selfLoopCounts[src] ?? 0;
-                selfLoopCounts[src] = count + 1;
-                return `self-loop loop-${count}`;
-              })() : '',
-            });
+
+            if (src === tgt) {
+              // ── Self-loop: spread directions evenly around 360° ──────────────
+              const idx   = selfLoopIdx[src] ?? 0;
+              const total = selfLoopTotal[src] ?? 1;
+              selfLoopIdx[src] = idx + 1;
+
+              // Distribute starting at top (−90°), going clockwise
+              const angleDeg = -90 + (360 / total) * idx;
+              const angleRad = (angleDeg * Math.PI) / 180;
+
+              // Push label radially outward from the loop center
+              const LBL_DIST = 36;   // pixels offset from loop midpoint
+              const mX = Math.round(Math.sin(angleRad) * LBL_DIST);
+              const mY = Math.round(-Math.cos(angleRad) * LBL_DIST) - 8;
+
+              edges.push({
+                data: { id: edgeKey, source: src, target: tgt, label },
+                classes: 'self-loop',
+                style: {
+                  'loop-direction': `${Math.round(angleDeg)}deg`,
+                  'loop-sweep':     '-50deg',
+                  'edge-text-rotation': 'none',
+                  'text-margin-x':  mX,
+                  'text-margin-y':  mY,
+                } as any,
+              });
+
+            } else {
+              // ── Parallel edges: fan out with unbundled-bezier ────────────────
+              const pairKey = `${src}→${tgt}`;
+              const pIdx    = parallelIdx[pairKey] ?? 0;
+              const pTotal  = parallelTotal[pairKey] ?? 1;
+              parallelIdx[pairKey] = pIdx + 1;
+
+              const SPACING = 45;
+              const mid     = (pTotal - 1) / 2;
+              const offset  = Math.round((pIdx - mid) * SPACING);
+
+              const edgeStyle: Record<string, unknown> =
+                pTotal > 1
+                  ? { 'curve-style': 'unbundled-bezier',
+                      'control-point-distances': offset,
+                      'control-point-weights':   0.5,
+                      'text-margin-y': -14 }
+                  : {};
+
+              edges.push({
+                data: { id: edgeKey, source: src, target: tgt, label },
+                style: Object.keys(edgeStyle).length ? (edgeStyle as any) : undefined,
+              });
+            }
           }
         }
       }
@@ -345,75 +411,17 @@ function getCyStyle(theme: 'indigo' | 'violet' | 'teal' | 'orange') {
         'transition-timing-function': 'ease-in-out',
       },
     },
-    // ── Self-loop styles — fanned out in 4 directions with horizontal labels ──
+    // ── Self-loop base style ──
+    // loop-direction / loop-sweep / text-margin-x / text-margin-y are set
+    // per-instance as inline styles (computed from angle in buildElements).
     {
       selector: 'edge.self-loop',
       style: {
-        'loop-direction': '-60deg',
-        'loop-sweep':     '-40deg',
+        'loop-direction':     '-90deg',   // default fallback (top)
+        'loop-sweep':         '-50deg',   // wider arc
         'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
-      },
-    },
-    {
-      selector: 'edge.loop-0',
-      style: {
-        'loop-direction': '-60deg',
-        'loop-sweep':     '-40deg',
-        'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
-      },
-    },
-    {
-      selector: 'edge.loop-1',
-      style: {
-        'loop-direction': '60deg',
-        'loop-sweep':     '-40deg',
-        'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
-      },
-    },
-    {
-      selector: 'edge.loop-2',
-      style: {
-        'loop-direction': '-120deg',
-        'loop-sweep':     '-40deg',
-        'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
-      },
-    },
-    {
-      selector: 'edge.loop-3',
-      style: {
-        'loop-direction': '120deg',
-        'loop-sweep':     '-40deg',
-        'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
-      },
-    },
-    {
-      selector: 'edge.loop-4',
-      style: {
-        'loop-direction': '0deg',
-        'loop-sweep':     '-40deg',
-        'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
-      },
-    },
-    {
-      selector: 'edge.loop-5',
-      style: {
-        'loop-direction': '180deg',
-        'loop-sweep':     '-40deg',
-        'edge-text-rotation': 'none',
-        'text-margin-y': -16,
-        'text-margin-x': 0,
+        'text-margin-y':      -20,
+        'text-margin-x':      0,
       },
     },
     // ── ACTIVE edge — dynamic theme glow ──
