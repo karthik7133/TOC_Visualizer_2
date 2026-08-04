@@ -124,32 +124,10 @@ function buildElements(automaton: AutomatonSchema): ElementDefinition[] {
     const pda = automaton as PDASchema;
     const trans = pda.transitions;
     if (trans && typeof trans === 'object') {
-      // ── Pass 1: count self-loops per state and parallel edges per (src,tgt) pair ──
-      const selfLoopTotal:    Record<string, number> = {};
-      const parallelTotal:    Record<string, number> = {};
-
-      for (const [src, inputMap] of Object.entries(trans)) {
-        if (!inputMap || typeof inputMap !== 'object') continue;
-        for (const [, entryList] of Object.entries(inputMap)) {
-          if (!Array.isArray(entryList)) continue;
-          for (const e of entryList) {
-            if (!e || typeof e !== 'object') continue;
-            const tgt = e.targetState ?? '';
-            if (!tgt) continue;
-            if (src === tgt) {
-              selfLoopTotal[src] = (selfLoopTotal[src] ?? 0) + 1;
-            } else {
-              const k = `${src}→${tgt}`;
-              parallelTotal[k] = (parallelTotal[k] ?? 0) + 1;
-            }
-          }
-        }
-      }
-
-      // ── Pass 2: generate edges with computed inline styles ──
-      const selfLoopIdx:   Record<string, number> = {};
-      const parallelIdx:   Record<string, number> = {};
-      const edgeCounter:   Record<string, number> = {};
+      // Group all transitions by (src, tgt) — ONE edge per state-pair.
+      // Self-loops (src === tgt) get one loop per state with all rules stacked.
+      // Parallel edges between two states collapse into one bezier with combined label.
+      const grouped: Record<string, { src: string; tgt: string; labels: string[] }> = {};
 
       for (const [src, inputMap] of Object.entries(trans)) {
         if (!inputMap || typeof inputMap !== 'object') continue;
@@ -158,68 +136,41 @@ function buildElements(automaton: AutomatonSchema): ElementDefinition[] {
           for (const e of entryList) {
             if (!e || typeof e !== 'object') continue;
             const pushSymbols = Array.isArray(e.pushSymbols) ? e.pushSymbols : [];
-            const push = pushSymbols.length ? pushSymbols.join('') : 'ε';
-            const tgt  = e.targetState ?? '';
+            const push     = pushSymbols.length ? pushSymbols.join('') : 'ε';
+            const tgt      = e.targetState ?? '';
             if (!tgt) continue;
             const inpLabel = inp === 'ε' || inp === '' ? 'ε' : inp;
-            const label    = `${inpLabel}, ${e.topOfStack ?? '?'} → ${push}`;
-
-            const baseKey = `${src}-${inp}-${tgt}`;
-            edgeCounter[baseKey] = (edgeCounter[baseKey] ?? 0) + 1;
-            const edgeKey = `${baseKey}-${edgeCounter[baseKey]}`;
-
-            if (src === tgt) {
-              // ── Self-loop: spread directions evenly around 360° ──────────────
-              const idx   = selfLoopIdx[src] ?? 0;
-              const total = selfLoopTotal[src] ?? 1;
-              selfLoopIdx[src] = idx + 1;
-
-              // Distribute starting at top (−90°), going clockwise
-              const angleDeg = -90 + (360 / total) * idx;
-              const angleRad = (angleDeg * Math.PI) / 180;
-
-              // Push label radially outward from the loop center
-              const LBL_DIST = 36;   // pixels offset from loop midpoint
-              const mX = Math.round(Math.sin(angleRad) * LBL_DIST);
-              const mY = Math.round(-Math.cos(angleRad) * LBL_DIST) - 8;
-
-              edges.push({
-                data: { id: edgeKey, source: src, target: tgt, label },
-                classes: 'self-loop',
-                style: {
-                  'loop-direction': `${Math.round(angleDeg)}deg`,
-                  'loop-sweep':     '-50deg',
-                  'edge-text-rotation': 'none',
-                  'text-margin-x':  mX,
-                  'text-margin-y':  mY,
-                } as any,
-              });
-
-            } else {
-              // ── Parallel edges: fan out with unbundled-bezier ────────────────
-              const pairKey = `${src}→${tgt}`;
-              const pIdx    = parallelIdx[pairKey] ?? 0;
-              const pTotal  = parallelTotal[pairKey] ?? 1;
-              parallelIdx[pairKey] = pIdx + 1;
-
-              const SPACING = 45;
-              const mid     = (pTotal - 1) / 2;
-              const offset  = Math.round((pIdx - mid) * SPACING);
-
-              const edgeStyle: Record<string, unknown> =
-                pTotal > 1
-                  ? { 'curve-style': 'unbundled-bezier',
-                      'control-point-distances': offset,
-                      'control-point-weights':   0.5,
-                      'text-margin-y': -14 }
-                  : {};
-
-              edges.push({
-                data: { id: edgeKey, source: src, target: tgt, label },
-                style: Object.keys(edgeStyle).length ? (edgeStyle as any) : undefined,
-              });
-            }
+            const rule     = `${inpLabel}, ${e.topOfStack ?? '?'} → ${push}`;
+            const key      = `${src}||${tgt}`;   // one bucket per (src,tgt)
+            if (!grouped[key]) grouped[key] = { src, tgt, labels: [] };
+            grouped[key].labels.push(rule);
           }
+        }
+      }
+
+      for (const [, { src, tgt, labels }] of Object.entries(grouped)) {
+        const combinedLabel = labels.join('\n');
+        const edgeId        = `pda-${src}-${tgt}`;
+
+        if (src === tgt) {
+          // ONE self-loop per state, facing upward, label stacked above it
+          const loopCount = selfLoopCounts[src] ?? 0;
+          selfLoopCounts[src] = loopCount + 1;
+          edges.push({
+            data: { id: edgeId, source: src, target: tgt, label: combinedLabel },
+            classes: 'self-loop',
+            style: {
+              'loop-direction':     '-90deg',   // top
+              'loop-sweep':         '-45deg',
+              'edge-text-rotation': 'none',
+              'text-margin-y':      -18,
+              'text-margin-x':      0,
+            } as any,
+          });
+        } else {
+          edges.push({
+            data: { id: edgeId, source: src, target: tgt, label: combinedLabel },
+          });
         }
       }
     }
@@ -391,10 +342,10 @@ function getCyStyle(theme: 'indigo' | 'violet' | 'teal' | 'orange') {
         'curve-style':               'bezier',
         'label':                     'data(label)',
         'font-family':               'Geist Mono, JetBrains Mono, monospace',
-        'font-size':                 12,
+        'font-size':                 11,
         'font-weight':               600,
         'color':                     '#0f172a',
-        'edge-text-rotation':        'none',      // ← labels always horizontal, never rotated
+        'edge-text-rotation':        'none',
         'text-margin-y':             -14,
         'text-margin-x':             0,
         'text-background-color':     '#ffffff',
@@ -404,23 +355,21 @@ function getCyStyle(theme: 'indigo' | 'violet' | 'teal' | 'orange') {
         'text-border-color':         '#94a3b8',
         'text-border-width':         1,
         'text-border-opacity':       1,
-        'text-max-width':            '160px',
+        'text-max-width':            '180px',
         'text-wrap':                 'wrap',
         'transition-property':       'line-color, width, color, target-arrow-color',
         'transition-duration':       '300ms',
         'transition-timing-function': 'ease-in-out',
       },
     },
-    // ── Self-loop base style ──
-    // loop-direction / loop-sweep / text-margin-x / text-margin-y are set
-    // per-instance as inline styles (computed from angle in buildElements).
+    // ── Self-loop: ONE loop per state, stacked label pushed clearly above ──
     {
       selector: 'edge.self-loop',
       style: {
-        'loop-direction':     '-90deg',   // default fallback (top)
-        'loop-sweep':         '-50deg',   // wider arc
+        'loop-direction':     '-90deg',
+        'loop-sweep':         '-45deg',
         'edge-text-rotation': 'none',
-        'text-margin-y':      -20,
+        'text-margin-y':      -22,
         'text-margin-x':      0,
       },
     },
